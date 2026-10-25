@@ -761,6 +761,34 @@ TRANSLATING_LOCK = HOME / "translating.lock"
 TRAINER_PID = HOME / "train" / "loop" / "train.pid"
 
 
+MLX_TRANSLATE = HOME / "train/mlx_translate.py"
+
+
+def mlx_translate(cfg, engine: Engine, work_dir: Path, sdh_mode: str, log: Log) -> None:
+    """Translation batches by the trained model (MLX + LoRA adapter) in a separate process.
+
+    Off unless cfg mlx_translate.adapter (or env HEBSUB_MLX_ADAPTER) points to an adapter.
+    Ollama's copy of the model is unloaded first and MLX_LOCK keeps it unloaded: the two
+    26B models never share the 32 GB. Batches that fail here are left for Ollama."""
+    adapter = os.environ.get("HEBSUB_MLX_ADAPTER") or cfg.get("mlx_translate.adapter")
+    if not adapter or engine.name != "ollama" or not (VOICE_PYTHON.is_file() and MLX_TRANSLATE.is_file()):
+        return
+    from .engines import MLX_LOCK
+    MLX_LOCK.write_text(str(os.getpid()))
+    try:
+        model = getattr(engine, "model", "")
+        if model:
+            subprocess.run(["ollama", "stop", model], capture_output=True)
+        started = time.time()
+        res = subprocess.run([str(VOICE_PYTHON), str(MLX_TRANSLATE), str(work_dir), str(adapter), sdh_mode],
+                             capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=4 * 3600)
+        tail = (res.stdout.strip().splitlines() or [""])[-1]
+        log(f"translate (trained model): {tail if res.returncode == 0 else 'failed: ' + (res.stderr or '')[-200:]}"
+            f" in {(time.time() - started) / 60:.1f} min")
+    finally:
+        MLX_LOCK.unlink(missing_ok=True)
+
+
 def _claim_gpu(engine: Engine, log: Log) -> bool:
     """Local engines need the GPU memory the trainer uses: pause training first."""
     if engine.name not in ("mlx", "ollama"):
@@ -1096,6 +1124,7 @@ def translate_video(video: Path, cfg, engine: Engine, log: Log, *,
 
         out_dir = work_dir / "translated_batches"
         out_dir.mkdir(exist_ok=True)
+        mlx_translate(cfg, engine, work_dir, sdh_mode, log)  # המודל המאומן, אם הוגדר (mlx_translate.adapter)
         todo = [(i, bf) for i, bf in enumerate(batch_files, 1) if not (out_dir / bf.name).is_file()]
         t0 = time.time()
 

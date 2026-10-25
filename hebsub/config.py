@@ -48,7 +48,8 @@ class Config:
         name = self.get(dotted_env_key)
         if not name:
             return None
-        return os.environ.get(name) or None
+        from .paths import secret
+        return secret(name)
 
     # -- convenience paths -------------------------------------------------
     @property

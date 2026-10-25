@@ -105,6 +105,14 @@ def main(argv=None) -> int:
     c = sub.add_parser("check", help="Verify configuration and engine connectivity")
     c.set_defaults(func=cmd_check)
 
+    su = sub.add_parser("setup", help="Interactive setup: model, ffmpeg, TMDB, Sonarr/Radarr/Bazarr")
+    su.set_defaults(func=lambda a: __import__("hebsub.setup_wizard", fromlist=["run"]).run(a.config))
+
+    w = sub.add_parser("watch", help="Run as a service: new downloads first, then the library")
+    w.add_argument("folders", nargs="*", help="library folders to translate (besides Sonarr/Radarr paths)")
+    w.add_argument("--interval", type=int, default=300, help="seconds between checks when idle")
+    w.set_defaults(func=lambda a: __import__("hebsub.watch", fromlist=["run"]).run(a.config, a.folders, a.interval))
+
     args = parser.parse_args(argv)
     return args.func(args)
 

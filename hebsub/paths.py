@@ -48,3 +48,33 @@ def pid_alive(pid: int) -> bool:
     except PermissionError:
         return True
     return True
+
+
+SECRETS = HOME / "secrets.json"
+
+
+def secret(name: str) -> str | None:
+    """An API key: the environment variable first, then secrets.json in the data folder
+    (written by `hebsub setup`, readable only by the user on macOS/Linux)."""
+    val = os.environ.get(name)
+    if val:
+        return val.strip().strip('"').strip("'") or None
+    try:
+        import json
+        return (json.loads(SECRETS.read_text(encoding="utf-8")).get(name) or "").strip() or None
+    except (OSError, ValueError):
+        return None
+
+
+def save_secret(name: str, value: str) -> None:
+    import json
+    data = {}
+    try:
+        data = json.loads(SECRETS.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        pass
+    data[name] = value
+    SECRETS.parent.mkdir(parents=True, exist_ok=True)
+    SECRETS.write_text(json.dumps(data, indent=1), encoding="utf-8")
+    if sys.platform != "win32":
+        os.chmod(SECRETS, 0o600)

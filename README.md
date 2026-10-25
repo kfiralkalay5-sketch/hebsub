@@ -84,12 +84,51 @@ hebsub check                                               # בדיקת התקנ
 - **מודל קטן יותר:** משנים את `ollama.model`, למשל ל-`gemma3:12b`. צריך כ-10GB, והאיכות נמוכה יותר.
 - **מפתחות API:** לא נשמרים בקובץ ההגדרות. שמים אותם במשתני סביבה. ב-Windows: `setx TMDB_API_KEY "..."`, ובמק ובלינוקס: `export ...`.
 
+## הגדרה מודרכת: `hebsub setup`
+מריצים פעם אחת בטרמינל או ב-PowerShell:
+```bash
+hebsub setup
+```
+האשף:
+- בודק ש-Ollama רץ ושהמודל מותקן. אם לא, הוא מציע להוריד אותו.
+- מוצא את ffmpeg.
+- מחבר אופציונלית:
+  - **TMDB:** מפתח חינמי מ-themoviedb.org, שאומר איזו דמות גבר ואיזו אישה, וזה משפר מאוד את הזכר והנקבה בעברית.
+  - **Sonarr ו-Radarr:** להורדות חדשות ולמציאת הספרייה. האשף שואל איפה כל תיקייה שלהם נמצאת במחשב הזה, למשל `/tv` מתוך Docker מול `D:\TV` או `\\NAS\TV`.
+  - **Bazarr:** כדי להוריד כתוביות באנגלית כשאין לסרטון.
+
+כל חיבור נבדק מיד. המפתחות נשמרים בקובץ `secrets.json` בתיקיית הנתונים, ולא בקובץ ההגדרות.
+
+## תרגום אוטומטי ברקע: `hebsub watch`
+```bash
+hebsub watch                      # עם התיקיות של Sonarr/Radarr
+hebsub watch "D:\Movies" "D:\TV"  # או תיקיות מסוימות
+```
+- **סדר העבודה:** הורדות חדשות מתורגמות ראשונות. כשאין חדשות, הוא ממשיך לתרגם את כל מה שאין לו עברית בספרייה, כותר אחרי כותר.
+- **כשאין כתוביות באנגלית:** הוא מנסה שוב כל 6 שעות, במשך שבוע.
+- **אחרי הפעלה מחדש:** הוא ממשיך מאיפה שעצר.
+
+**הפעלה אוטומטית עם המחשב:**
+- **Windows (PowerShell):**
+  ```powershell
+  schtasks /Create /TN hebsub /SC ONLOGON /TR "hebsub watch" /RL LIMITED
+  ```
+- **macOS:** קובץ launchd ב-`~/Library/LaunchAgents/hebsub.plist`, עם `ProgramArguments` = הנתיב ל-`hebsub` ואחריו `watch`, ו-`RunAtLoad` = true. אחר כך מריצים `launchctl load ~/Library/LaunchAgents/hebsub.plist`.
+- **Linux (systemd, משתמש):** יוצרים את הקובץ `~/.config/systemd/user/hebsub.service` עם התוכן:
+  ```ini
+  [Service]
+  ExecStart=%h/.local/bin/hebsub watch
+  Restart=on-failure
+  [Install]
+  WantedBy=default.target
+  ```
+  ואחר כך מפעילים:
+  ```bash
+  systemctl --user enable --now hebsub
+  ```
+
 ## בקרוב
-- **גרסה 0.2:**
-  - פקודה `hebsub setup` שמחברת את Sonarr, Radarr ו-Bazarr.
-  - מצב `hebsub watch` שמתרגם הורדות חדשות אוטומטית.
-  - מפתח TMDB לזיהוי מגדר הדמויות.
-  - מודל קול אופציונלי (זיהוי דובר וגבר או אישה), שרץ על המעבד בכל מערכת הפעלה.
+- **גרסה 0.2 (המשך):** מודל קול אופציונלי שמזהה דובר, וגם אם הוא גבר או אישה. הוא ירוץ על המעבד בכל מערכת הפעלה.
 - **גרסה 0.3:** למידה אוטומטית:
   - אוצר מילים לכל סדרה, מכתוביות עבריות אנושיות שיש בספרייה.
   - זיכרון תרגום.

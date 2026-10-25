@@ -36,7 +36,8 @@ _SSL = ssl.create_default_context(cafile="/etc/ssl/cert.pem") if Path("/etc/ssl/
 
 
 def _token() -> str | None:
-    return (os.environ.get("TMDB_API_KEY") or "").strip().strip('"').strip("'") or None
+    from .paths import secret
+    return secret("TMDB_API_KEY")
 
 
 def _tmdb(path: str, **params) -> dict:

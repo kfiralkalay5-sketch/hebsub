@@ -1,5 +1,6 @@
 """Cross-platform smoke tests (no model needed). Run: python -m pytest"""
 import importlib
+import time
 import json
 import os
 import sys
@@ -102,3 +103,39 @@ def test_prepare_build_roundtrip_utf8(home, tmp_path):
     he = out.read_text(encoding="utf-8-sig")
     assert "שלום, מה שלומך?" in he
     assert "00:00:01,000 --> 00:00:03,000" in he
+
+
+def test_secrets_file_and_env(home, monkeypatch):
+    import hebsub.paths as paths
+    importlib.reload(paths)
+    paths.save_secret("SONARR_API_KEY", "abc123")
+    assert paths.secret("SONARR_API_KEY") == "abc123"
+    monkeypatch.setenv("SONARR_API_KEY", "fromenv")
+    assert paths.secret("SONARR_API_KEY") == "fromenv"
+
+
+def test_setup_path_mapping(monkeypatch, tmp_path):
+    from hebsub import setup_wizard as W
+    answers = iter([str(tmp_path)])
+    monkeypatch.setattr("builtins.input", lambda *_: next(answers))
+    pairs = W.map_paths(["/tv"], [])
+    assert pairs == [["/tv", str(tmp_path)]]
+
+
+def test_watch_backlog_and_retry(home, tmp_path):
+    import hebsub.watch as watch
+    importlib.reload(watch)
+    from hebsub.config import Config
+    lib = tmp_path / "lib" / "Show" / "Season 1"
+    lib.mkdir(parents=True)
+    (lib / "Show.S01E01.mkv").write_bytes(b"x")
+    (lib / "Show.S01E02.mkv").write_bytes(b"x")
+    he = "".join(f"{i}\n00:00:0{i},000 --> 00:00:0{i},900\nשלום, מה שלומך היום?\n\n" for i in range(1, 9))
+    (lib / "Show.S01E02.he.srt").write_text(he, encoding="utf-8")  # real files are > 200 bytes
+    st = watch.load_state()
+    todo = watch.backlog(Config.load(), [tmp_path / "lib"], st)
+    assert [Path(p).name for p in todo] == ["Show.S01E01.mkv"]
+    st["no_english"][todo[0]] = [time.time(), time.time()]
+    assert not watch._due(st, todo[0])           # just tried: wait 6 hours
+    st["no_english"][todo[0]] = [time.time() - 8 * 86400, 0]
+    assert not watch._due(st, todo[0])           # a week without English: give up

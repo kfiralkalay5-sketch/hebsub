@@ -1,0 +1,82 @@
+{
+  "_comment": "hebsub configuration. Copy to config.json (in your hebsub data folder) and adjust. Secrets are never stored here: put API keys in environment variables (see README).",
+  "engine": "ollama",
+  "ollama": {
+    "host": "http://127.0.0.1:11434",
+    "model": "hf.co/unsloth/gemma-4-26B-A4B-it-GGUF:UD-Q4_K_M",
+    "temperature": 0.3,
+    "num_ctx": 16384,
+    "num_predict": 16384,
+    "think": false,
+    "batch_size": 30,
+    "review_rounds": 1,
+    "review_compact": true,
+    "parallel": 1,
+    "addressee_classifier": false,
+    "speaker_classifier": false
+  },
+  "gemini": {
+    "api_key_env": "GEMINI_API_KEY",
+    "model": "gemini-3.8-flash",
+    "requests_per_minute": 9,
+    "temperature": 0.3,
+    "max_output_tokens": 8192,
+    "batch_size": 30
+  },
+  "subtitles": {
+    "hebrew_suffixes": [
+      ".he.srt",
+      ".heb.srt",
+      ".hebrew.srt",
+      ".he.hi.srt",
+      ".iw.srt"
+    ],
+    "english_suffixes": [
+      ".en.srt",
+      ".eng.srt",
+      ".english.srt",
+      ".en.hi.srt",
+      ".srt"
+    ],
+    "output_suffix": ".he.srt",
+    "sdh_mode": "remove",
+    "batch_size": 10,
+    "context_window": 3
+  },
+  "ffmpeg": {
+    "enabled": true,
+    "binary": "ffmpeg",
+    "probe_binary": "ffprobe"
+  },
+  "bazarr": {
+    "enabled": false,
+    "url": "http://localhost:6767",
+    "api_key_env": "BAZARR_API_KEY",
+    "wait_seconds": 120
+  },
+  "sonarr": {
+    "url": "",
+    "api_key_env": "SONARR_API_KEY",
+    "rescan_after": false
+  },
+  "radarr": {
+    "url": "",
+    "api_key_env": "RADARR_API_KEY",
+    "rescan_after": false
+  },
+  "path_map": [],
+  "limits": {
+    "max_cues": 3000,
+    "job_timeout_seconds": 5400,
+    "keep_work_dirs": true
+  },
+  "bible": {
+    "enabled": true,
+    "max_chars_per_chunk": 5000,
+    "max_chunks": 6
+  },
+  "addressee": {
+    "man_threshold": 0.1,
+    "woman_threshold": 0.98
+  }
+}

@@ -303,6 +303,14 @@ def acquire_english(video: Path, cfg, work_dir: Path, log, *,
     if embedded:
         return embedded
 
+    # a Whisper transcript made from this file's own audio (bench/asr_english.py), written only
+    # after days without English subtitles anywhere; kept in the data folder, not next to the video
+    from .paths import HOME
+    asr = HOME / "asr" / f"{video.stem}.en.srt"
+    if asr.is_file() and asr.stat().st_size > 200:
+        log(f"english: using a transcript of the audio ({asr.name})")
+        return asr
+
     if cfg.get("bazarr.enabled", True):
         if episode_id is None and movie_id is None:
             ids = resolve_bazarr_ids(cfg, video)

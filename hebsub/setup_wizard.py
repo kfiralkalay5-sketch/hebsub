@@ -162,6 +162,36 @@ def setup_tmdb() -> None:
         save_secret("TMDB_API_KEY", key)
 
 
+def setup_voice(data: dict) -> None:
+    """Optional voice features: speaker gender from the audio and the addressee classifier."""
+    from . import voicekit
+    try:
+        import numpy, onnxruntime, sherpa_onnx, tokenizers  # noqa: F401
+    except ImportError:
+        print('  Voice features are not installed. To add them: pip install "hebsub[voice]" and run setup again.')
+        return
+    if not yes("Install the voice models (speaker gender from the audio, about 30 MB, CPU only)?", default=True):
+        return
+    if not voicekit.EMB.is_file():
+        voicekit.download(voicekit.EMB_URL, voicekit.EMB)
+    print("  voice model: " + ("OK" if voicekit.available() else "missing"))
+    print("  The 'who is addressed' classifier (125 MB) is published as addressee-model.zip on the")
+    print("  Releases page of the repository you installed hebsub from.")
+    url = ask("  URL of addressee-model.zip (Enter to skip)", data.get("voice", {}).get("addressee_url", ""))
+    if url:
+        import zipfile
+        z = voicekit.DIR / "addressee-model.zip"
+        if voicekit.download(url, z):
+            with zipfile.ZipFile(z) as zf:
+                zf.extractall(voicekit.ADDR.parent)
+            z.unlink(missing_ok=True)
+        data.setdefault("voice", {})["addressee_url"] = url
+    ok = voicekit.addressee_available()
+    print("  addressee classifier: " + ("OK" if ok else "not installed"))
+    data.setdefault("ollama", {})["addressee_classifier"] = ok
+    data.setdefault("ollama", {})["gender_pass"] = True
+
+
 def run(config_path: str | None = None) -> int:
     target = Path(config_path) if config_path else HOME / "config.json"
     base = target if target.is_file() else Path(__file__).resolve().parent / "default_config.json"
@@ -180,6 +210,8 @@ def run(config_path: str | None = None) -> int:
     setup_arr(data, "radarr", "RADARR_API_KEY")
     print("\n5) Bazarr (optional)")
     setup_bazarr(data)
+    print("\n6) Voice features (optional: better he/she in Hebrew)")
+    setup_voice(data)
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(f"\nSaved {target}. API keys are in {HOME / 'secrets.json'}.")

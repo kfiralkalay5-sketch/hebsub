@@ -346,6 +346,12 @@ def _repair_sound_tags(src: Path, work_dir: Path, log: Log) -> Path:
     blocks = kept
     n3 = n5 = 0
     after_credit = 0
+    # תוויות דובר באותיות רגילות ("Jackson: There he is." / "Lopez: 7-Adam-07"): רק שמות שחוזרים
+    # 3 פעמים לפחות בתחילת שורה, ורק כשיש לפחות שני שמות כאלה בקובץ (Rookie, Hobbit)
+    _lab = re.compile(r"(?m)^(\s*-?\s*(?:<i>)?)([A-Z][a-z]+(?: [A-Z][a-z]+)?):\s+(?=\S)")
+    from collections import Counter as _C
+    _cnt = _C(m.group(2) for m in _lab.finditer("\n\n".join(blocks)))
+    title_labels = {k for k, v in _cnt.items() if v >= 3} if sum(1 for v in _cnt.values() if v >= 3) >= 2 else set()
     for i, b in enumerate(blocks):
         lines = b.split("\n")
         if len(lines) < 3 or "-->" not in lines[1]:
@@ -362,6 +368,8 @@ def _repair_sound_tags(src: Path, work_dir: Path, log: Log) -> Path:
         # closed-caption speaker labels ("JIM: I'm having fun!", "ALL:") are not dialogue;
         # also "[Zi] Ah, a mother's set." / "-[Pavi] What is this place?" (Avatar FENiX SDH)
         new = [re.sub(r"^(\s*-?\s*(?:<i>)?)[A-Z][A-Z .'&-]{1,24}:\s*", r"\1", l) for l in lines[2:]]
+        if title_labels:
+            new = [_lab.sub(lambda m: m.group(1) if m.group(2) in title_labels else m.group(0), l) for l in new]
         new = [re.sub(r"^(\s*-?\s*)\[(?:[A-Z][\w'.-]*)(?: [A-Z][\w'.-]*){0,2}\]\s*(?=\S)", r"\1", l) for l in new]
         # a sound tag in front of dialogue ("[sharp inhale] The bandits") was translated with it
         new = [re.sub(r"^(\s*-?\s*(?:<i>)?)\[[a-z][^\]\n]{0,40}\]\s*(?=[^\s\[])", r"\1", l) for l in new]
@@ -452,7 +460,18 @@ def voice_hints(cfg, engine: Engine, video: Path, english: Path, work_dir: Path,
     if not cfg.get(f"{engine.name}.gender_pass", engine.name == "ollama"):
         return {}
     if not (VOICE_PYTHON.is_file() and VOICE_SCRIPT.is_file()):
-        return {}
+        # any OS: the optional voicekit (sherpa-onnx, CPU) when its models are installed
+        from . import voicekit
+        if not voicekit.available():
+            return {}
+        started = time.time()
+        try:
+            hints = voicekit.voice_hints(video, english, work_dir, ffmpeg=cfg.get("ffmpeg.binary", "ffmpeg"))
+        except Exception as exc:  # noqa: BLE001
+            log(f"voices: analysis failed, continuing without ({str(exc)[:200]})")
+            return {}
+        log(f"voices: {len(hints)} cues with voice hints in {(time.time() - started) / 60:.1f} min")
+        return hints
     out = work_dir / "voices.json"
     if not out.is_file():
         started = time.time()
@@ -508,8 +527,28 @@ def addressee_classifier(cfg, engine: Engine, video: Path, english: Path, bible_
 
     Held-out precision: woman 94.6% at p>=0.98 (12% of female addressees), man 99.1% at
     p<=0.05. Runs in MLX, so Ollama's copy of the model is unloaded first (32 GB Mac)."""
-    if not cfg.get(f"{engine.name}.addressee_classifier", False) or not ADDR_ADAPTER.is_dir():
+    if not cfg.get(f"{engine.name}.addressee_classifier", False):
         return {}
+    if not ADDR_ADAPTER.is_dir():
+        # any OS: the portable ONNX classifier (voicekit), with its own calibrated thresholds
+        from . import voicekit
+        if not voicekit.addressee_available():
+            return {}
+        started = time.time()
+        try:
+            bible = json.loads(bible_path.read_text(encoding="utf-8-sig"))
+            p = voicekit.addressee(english, bible, work_dir, set(extra or []))
+        except Exception as exc:  # noqa: BLE001
+            log(f"addressee: portable classifier failed, continuing without ({str(exc)[:200]})")
+            return {}
+        hi = float(cfg.get("addressee.onnx_woman_threshold", 0.965))
+        lo = float(cfg.get("addressee.onnx_man_threshold", 0.061))
+        skip = set(extra or [])  # imperatives were not in the classifier's training: veto use only
+        out = {int(k): ("f" if v >= hi else "m") for k, v in p.items() if (v >= hi or v <= lo) and int(k) not in skip}
+        log(f"addressee: {len(p)} lines classified in {(time.time() - started) / 60:.1f} min (portable)")
+        log(f"addressee: {sum(1 for g in out.values() if g == 'f')} woman / "
+            f"{sum(1 for g in out.values() if g == 'm')} man addressees from the classifier")
+        return out
     out = work_dir / "addressee.json"
     if not out.is_file():
         model = getattr(engine, "model", "")

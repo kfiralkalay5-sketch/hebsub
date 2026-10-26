@@ -139,3 +139,14 @@ def test_watch_backlog_and_retry(home, tmp_path):
     assert not watch._due(st, todo[0])           # just tried: wait 6 hours
     st["no_english"][todo[0]] = [time.time() - 8 * 86400, 0]
     assert not watch._due(st, todo[0])           # a week without English: give up
+
+
+def test_voicekit_prompt_and_absence(home):
+    import hebsub.voicekit as K
+    importlib.reload(K)
+    assert not K.available() or K.EMB.is_file()       # no models in a fresh data folder
+    cues = [{"id": i, "start": i, "end": i + 1, "text": t} for i, t in
+            enumerate(["Hi.", "Are you coming?", "- Yes. / - No."], 1)]
+    text = K._example(cues, 1, None, {}, ["Ann (woman)"])
+    assert text.startswith("Characters: Ann (woman)") and ">> [?, ?] Are you coming?" in text
+    assert "[two speakers]" in text

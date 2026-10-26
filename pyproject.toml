@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hebsub"
-version = "0.2.0.dev0"
+version = "0.2.0"
 description = "Local English-to-Hebrew subtitle translation for video libraries (Ollama), with gender-aware Hebrew"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -12,6 +12,7 @@ dependencies = []  # the core uses only the Python standard library
 
 [project.optional-dependencies]
 test = ["pytest>=7"]
+voice = ["numpy>=1.24", "sherpa-onnx>=1.10,<2", "onnxruntime>=1.17", "tokenizers>=0.15"]
 
 [project.scripts]
 hebsub = "hebsub.cli:main"
@@ -20,7 +21,7 @@ hebsub = "hebsub.cli:main"
 packages = ["hebsub", "hebsub.vendor", "hebsub.vendor.cueivrit", "hebsub.vendor.cueivrit.scripts"]
 
 [tool.setuptools.package-data]
-hebsub = ["default_config.json"]
+hebsub = ["default_config.json", "voice_probe.npz"]
 "hebsub.vendor.cueivrit" = ["LICENSE", "README.md", "references/*", "examples/*"]
 
 [tool.pytest.ini_options]

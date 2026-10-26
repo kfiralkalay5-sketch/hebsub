@@ -13,7 +13,8 @@
     "review_compact": true,
     "parallel": 1,
     "addressee_classifier": false,
-    "speaker_classifier": false
+    "speaker_classifier": false,
+    "gender_pass": true
   },
   "gemini": {
     "api_key_env": "GEMINI_API_KEY",
@@ -77,6 +78,11 @@
   },
   "addressee": {
     "man_threshold": 0.1,
-    "woman_threshold": 0.98
+    "woman_threshold": 0.98,
+    "onnx_woman_threshold": 0.965,
+    "onnx_man_threshold": 0.061
+  },
+  "voice": {
+    "addressee_url": ""
   }
 }

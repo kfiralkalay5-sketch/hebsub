@@ -1042,8 +1042,8 @@ def finish_translation(cfg, engine: Engine, video: Path, english: Path, work_dir
         changed += recut
         for r in records:
             en = src.get(r["cue_id"], "")
-            r["text"] = editorial.speaker_dashes(editorial.reflow(editorial.human_habits(
-                editorial.fix_name_variants(r.get("text") or "", en, bible.get("names_he")), en)), en)
+            r["text"] = editorial.speaker_dashes(editorial.reflow(editorial.human_habits(editorial.fix_final_letters(
+                editorial.fix_name_variants(r.get("text") or "", en, bible.get("names_he"))), en)), en)
         changed += left
         rules = learn.rules_for(memory.series_key(video, cfg.get("memory.series_roots", ["TV Shows"])))
         if rules:

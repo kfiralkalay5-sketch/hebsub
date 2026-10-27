@@ -1391,6 +1391,17 @@ _PSEUDO_TAG = re.compile(r"</?(?:text|translations?|cue|cue_id|hebrew|output|ans
 _EMOJI = re.compile("[\U0001F000-\U0001FAFF️‍]")
 
 
+# a final letter followed by a regular letter (not a stretched "חירוםםם")
+_MID_FINAL = re.compile(r"(?<=[א-ת])([ךםןףץ])(?=[אבגדהוזחטיכלמנסעפצקרשת])|^([ךםןףץ])(?=[אבגדהוזחטיכלמנסעפצקרשת])", re.M)
+_UNFINAL = str.maketrans("ךםןףץ", "כמנפצ")
+
+
+def fix_final_letters(text: str) -> str:
+    """A final letter inside a word is never Hebrew: סנבוןזאקורה -> סנבונזאקורה, מתוךך -> מתוכך
+    (104 cases in 414 outputs, mostly transliterated names)."""
+    return _MID_FINAL.sub(lambda m: m.group(0).translate(_UNFINAL), text)
+
+
 def fix_name_variants(text: str, english: str, names: dict | None) -> str:
     """Georgie is not George: where the name table spells a longer name as a shorter one
     plus letters (ג'ורג'י / ג'ורג') and the English line says only the longer name, the

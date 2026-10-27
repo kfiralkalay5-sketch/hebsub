@@ -143,6 +143,7 @@ def merge(mem: dict, bible: dict, episode: str, log) -> dict:
 
 # ---------------------------------------------------------------- Hebrew spelling of names
 
+_UNFINAL = str.maketrans("ךםןףץ", "כמנפצ")
 _HE_NAME = re.compile(r"[א-ת'\"׳״\- .]+")
 
 
@@ -150,6 +151,7 @@ def clean_hebrew_name(he: str) -> str:
     """Without vowel points; '' when it holds anything but Hebrew letters (a model once
     answered with Bengali letters inside a name)."""
     he = re.sub(r"[֑-ֽֿ-ׇ]", "", he or "").strip()
+    he = re.sub(r"(?<=[א-ת])[ךםןףץ](?=[אבגדהוזחטיכלמנסעפצקרשת])", lambda m: m.group(0).translate(_UNFINAL), he)
     return he if _HE_NAME.fullmatch(he) and re.search(r"[א-ת]", he) else ""
 
 

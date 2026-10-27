@@ -29,3 +29,10 @@ def test_memory_names_only_where_they_are_names():
     assert _named_in("Hueco Mundo", text)
     assert not _named_in("Mark", text)  # only at the start of a sentence
     assert not _named_in("Will", "I will go.\nTell Will.")  # an ordinary word here
+
+
+def test_final_letter_inside_a_word():
+    from hebsub.editorial import fix_final_letters
+    assert fix_final_letters("הסנבוןזאקורה שלו, עםכם") == "הסנבונזאקורה שלו, עמכם"
+    assert fix_final_letters("חירוםםם! אם כן") == "חירוםםם! אם כן"  # a stretched word stays
+    assert memory.clean_hebrew_name("היוריןמרו") == "היורינמרו"

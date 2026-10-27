@@ -310,6 +310,11 @@ def acquire_english(video: Path, cfg, work_dir: Path, log, *,
     if asr.is_file() and asr.stat().st_size > 200:
         log(f"english: using a transcript of the audio ({asr.name})")
         return asr
+    # English subtitles burned into the picture, read by OCR (bench/ocr_english.py)
+    ocr = HOME / "ocr" / f"{video.stem}.en.srt"
+    if ocr.is_file() and ocr.stat().st_size > 200:
+        log(f"english: using subtitles read from the picture ({ocr.name})")
+        return ocr
 
     if cfg.get("bazarr.enabled", True):
         if episode_id is None and movie_id is None:

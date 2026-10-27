@@ -23,12 +23,24 @@ TITLES = {"sir", "general", "dr", "doctor", "mr", "mrs", "ms", "miss", "captain"
           "lord", "lady", "king", "queen", "professor", "father", "mother", "kid"}
 
 
+_SEASON = re.compile(r"^(season|series|s)[\s._-]*\d+|^specials?$|^עונה", re.I)
+_EPISODE = re.compile(r"(?<![a-z\d])s\d{1,2}[\s._-]*e\d{1,3}|(?<!\d)\d{1,2}x\d{2,3}(?!\d)", re.I)
+
+
 def series_key(video: Path, root_names: list[str]) -> str | None:
-    """Series folder name: the path component right after a TV root such as 'TV Shows'."""
+    """Series folder name: the path component right after a TV root such as 'TV Shows'.
+    Any other layout: the folder above 'Season N', else the show name before the episode
+    code of the file name (Show.Name.S01E02.1080p.mkv -> 'Show Name')."""
     parts = Path(video).parts
     for i, part in enumerate(parts[:-2]):
         if part in root_names:
             return parts[i + 1]
+    if len(parts) >= 3 and _SEASON.search(parts[-2]):
+        return parts[-3]
+    m = _EPISODE.search(parts[-1]) if parts else None
+    if m:
+        name = re.sub(r"[._]+", " ", parts[-1][:m.start()]).strip(" -")
+        return name or None
     return None
 
 

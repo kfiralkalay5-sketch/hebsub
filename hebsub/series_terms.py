@@ -21,6 +21,7 @@ from .paths import HOME
 
 TRAIN_WORK = HOME / "train" / "work"
 CACHE = HOME / "series_terms"
+PAIRS = HOME / "pairs"
 _PRE = ("וכש", "ושה", "וה", "וב", "ול", "ומ", "וש", "שה", "שב", "של", "כש", "מה", "לה", "בה",
         "ו", "ה", "ב", "ל", "מ", "ש", "כ")
 _SKIP = {"I", "I'm", "I'll", "I've", "I'd", "OK", "Okay", "Mr", "Mrs", "Ms", "Dr", "God", "Oh", "Hey",
@@ -35,11 +36,29 @@ _HE = re.compile(r"[א-ת][א-ת'\"׳״\-]*")
 
 
 def _series_of(video: str, roots=("TV Shows",)) -> str | None:
-    parts = Path(video).parts
-    for i, part in enumerate(parts[:-2]):
-        if part in roots:
-            return parts[i + 1]
-    return None
+    from .memory import series_key
+    return series_key(Path(video), list(roots))
+
+
+def _stored() -> list[dict]:
+    """Pairs aligned by `hebsub learn` (pairs/*.json): [{video, pairs}]."""
+    out = []
+    for f in sorted(PAIRS.glob("*.json")):
+        try:
+            d = json.loads(f.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if d.get("pairs"):
+            out.append(d)
+    return out
+
+
+def clear_cache(series: set[str]) -> None:
+    """New pairs were learned for these series: their next translation mines the table again."""
+    keys = {re.sub(r"[^\w\-]+", "_", f"{s}__") for s in series if s}
+    for f in CACHE.glob("*.json"):
+        if any(f.name.startswith(k) for k in keys):
+            f.unlink()
 
 
 def _source_stems(series: str) -> set[str]:
@@ -52,6 +71,7 @@ def _source_stems(series: str) -> set[str]:
             continue
         if _series_of(video) == series and (st.parent / "target.json").is_file():
             out.add(Path(video).stem)
+    out |= {Path(d["video"]).stem for d in _stored() if _series_of(d["video"]) == series}
     return out
 
 
@@ -75,6 +95,9 @@ def _pairs(series: str, exclude_stem: str) -> list[tuple[str, str]]:
             if h and c.get("clean_text"):
                 out.append((re.sub(r"<[^>]+>|\{[^}]*\}", "", c["clean_text"]).replace("\n", " "),
                             re.sub(r"<[^>]+>|\{[^}]*\}", "", h).replace("\n", " ")))
+    for d in _stored():
+        if _series_of(d["video"]) == series and Path(d["video"]).stem != exclude_stem:
+            out += [(en, he) for en, he in d["pairs"]]
     return out
 
 

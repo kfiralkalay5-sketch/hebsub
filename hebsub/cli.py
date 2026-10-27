@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -58,6 +59,16 @@ def cmd_scan(args) -> int:
                 translate_video(path, cfg, engine, _log)
             except Exception as exc:  # noqa: BLE001
                 _log(f"FAILED: {exc}")
+    return 0
+
+
+def cmd_learn(args) -> int:
+    from .learn import run
+    from .watch import library_roots
+    cfg = Config.load(args.config)
+    roots = library_roots(cfg, args.folders)
+    res = run(roots, cfg, print, mine_library=not args.corrections_only, limit=args.limit)
+    print(json.dumps(res, ensure_ascii=False))
     return 0
 
 
@@ -112,6 +123,12 @@ def main(argv=None) -> int:
     w.add_argument("folders", nargs="*", help="library folders to translate (besides Sonarr/Radarr paths)")
     w.add_argument("--interval", type=int, default=300, help="seconds between checks when idle")
     w.set_defaults(func=lambda a: __import__("hebsub.watch", fromlist=["run"]).run(a.config, a.folders, a.interval))
+
+    le = sub.add_parser("learn", help="Learn from the library's human Hebrew subtitles and from your corrections")
+    le.add_argument("folders", nargs="*", help="library folders (besides Sonarr/Radarr paths)")
+    le.add_argument("--corrections-only", action="store_true", help="only read your edits of our subtitles")
+    le.add_argument("--limit", type=int, default=None, help="align at most this many new videos")
+    le.set_defaults(func=cmd_learn)
 
     args = parser.parse_args(argv)
     return args.func(args)

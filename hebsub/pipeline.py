@@ -12,7 +12,7 @@ import time
 from pathlib import Path
 from typing import Callable
 
-from . import cast as cast_mod, editorial, memory
+from . import cast as cast_mod, editorial, learn, memory
 from .engines import Engine, EngineError
 from .subsource import acquire_english, find_hebrew
 from .paths import HOME, pid_alive
@@ -1045,6 +1045,15 @@ def finish_translation(cfg, engine: Engine, video: Path, english: Path, work_dir
             r["text"] = editorial.speaker_dashes(editorial.reflow(editorial.human_habits(
                 editorial.fix_name_variants(r.get("text") or "", en, bible.get("names_he")), en)), en)
         changed += left
+        rules = learn.rules_for(memory.series_key(video, cfg.get("memory.series_roots", ["TV Shows"])))
+        if rules:
+            fixed = 0
+            for r in records:
+                new = learn.apply_rules(rules, r.get("text") or "")
+                if new != r.get("text"):
+                    r["text"], fixed = new, fixed + 1
+            if fixed:
+                log(f"learn: {fixed} line(s) follow the user's own corrections of this series")
         before = {r["cue_id"]: r.get("text") for r in json.loads(translations.read_text(encoding="utf-8"))}
         if changed or any(before.get(r["cue_id"]) != r.get("text") for r in records):
             # also when only the habits / reflow / dashes changed something
@@ -1079,6 +1088,11 @@ def finish_translation(cfg, engine: Engine, video: Path, english: Path, work_dir
 
     shutil.copy2(staged, output)
     log(f"written: {output}")
+    if output_dir is None:
+        try:  # a copy of what we wrote, to learn from the user's later edits of it
+            learn.remember_output(cfg, video, english, output)
+        except Exception as exc:  # noqa: BLE001 - learning never fails a translation
+            log(f"learn: could not keep a copy of the output ({exc})")
     return output
 
 
@@ -1125,6 +1139,9 @@ def translate_video(video: Path, cfg, engine: Engine, log: Log, *,
                 # (Middle-earth = הארץ התיכונה); they win over the model's transliterations
                 from . import series_terms
                 b["names_he"] = {**b["names_he"], **series_terms.for_video(video, engine, log=log)}
+            rules = learn.rules_for(memory.series_key(video, cfg.get("memory.series_roots", ["TV Shows"])))
+            if rules:  # the user's own spelling of a name wins over every table
+                b["names_he"] = {k: learn.apply_rules(rules, v) for k, v in b["names_he"].items()}
             bible_path.write_text(json.dumps(b, ensure_ascii=False, indent=2), encoding="utf-8")
 
         prepare_args = [

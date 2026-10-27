@@ -84,5 +84,9 @@
   },
   "voice": {
     "addressee_url": ""
+  },
+  "learn": {
+    "enabled": true,
+    "videos_per_round": 50
   }
 }

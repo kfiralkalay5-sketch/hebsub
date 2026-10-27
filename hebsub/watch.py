@@ -144,6 +144,12 @@ def run(config_path: str | None = None, folders: list[str] | None = None, interv
             pending = backlog(cfg, roots, st)
             last_scan = time.time()
             _log(f"library: {len(pending)} title(s) without Hebrew")
+            if cfg.get("learn.enabled", True):
+                try:  # your edits of our subtitles, new human Hebrew in the library (vocabulary, names)
+                    from .learn import run as learn
+                    learn(roots, cfg, _log, limit=int(cfg.get("learn.videos_per_round", 50)))
+                except Exception as exc:  # noqa: BLE001 - learning never stops the service
+                    _log(f"learn failed: {exc}")
         queue = [p for p in fresh + pending if _due(st, p) and p not in st["done"]
                  and st["failed"].get(p, 0) < 2]
         if not queue:

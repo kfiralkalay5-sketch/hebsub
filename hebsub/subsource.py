@@ -74,16 +74,25 @@ def embedded_hebrew(video: Path, cfg) -> bool:
     return False
 
 
+def decode_head(raw: bytes) -> str:
+    """The first bytes of a subtitle as text: UTF-8, else cp1255. A cut that falls inside the
+    last UTF-8 character is not a reason to fall back (it was, for every second Hebrew UTF-8
+    file over 20 KB: its head read as cp1255 gibberish and the file did not count as Hebrew)."""
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        if exc.start >= len(raw) - 3:
+            return raw[:exc.start].decode("utf-8")
+        return raw.decode("cp1255", "replace")
+
+
 def _hebrew_text(path: Path) -> bool:
     """Hebrew letters outnumber Latin ones, reading the file as UTF-8 or else as cp1255."""
     try:
         raw = path.read_bytes()[:20000]
     except OSError:
         return False
-    try:
-        text = raw.decode("utf-8")
-    except UnicodeDecodeError:
-        text = raw.decode("cp1255", "replace")
+    text = decode_head(raw)
     hebrew = sum(1 for ch in text if "\u05d0" <= ch <= "\u05ea")
     latin = sum(1 for ch in text if ch.isascii() and ch.isalpha())
     return hebrew > latin
@@ -111,10 +120,7 @@ def _looks_english(path: Path) -> bool:
         raw = path.read_bytes()[:40000]
     except OSError:
         return False
-    try:
-        text = raw.decode("utf-8")
-    except UnicodeDecodeError:
-        text = raw.decode("cp1255", "replace")
+    text = decode_head(raw)
     text = re.sub(r"<[^>]+>|\{[^}]*\}|\d+:\d+:\d+[,.]\d+", " ", text)
     letters = [ch for ch in text if ch.isalpha()]
     if len(letters) < 200:

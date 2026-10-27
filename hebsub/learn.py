@@ -51,7 +51,9 @@ MAX_EMBEDDED_GB = 6  # pulling an embedded English track reads the whole file
 def _decode(raw: bytes) -> str:
     try:
         return raw.decode("utf-8-sig")
-    except UnicodeDecodeError:
+    except UnicodeDecodeError as exc:
+        if exc.start >= len(raw) - 3:  # a head cut inside the last character is still UTF-8
+            return raw[:exc.start].decode("utf-8-sig")
         he = raw.decode("cp1255", "replace")
         return he if len(HEB.findall(he)) > 50 else raw.decode("cp1252", "replace")
 

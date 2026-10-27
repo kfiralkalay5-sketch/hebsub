@@ -139,3 +139,48 @@ def merge(mem: dict, bible: dict, episode: str, log) -> dict:
             rels.append(rel)
             seen.add((rel.get("from"), rel.get("to")))
     return mem
+
+
+# ---------------------------------------------------------------- Hebrew spelling of names
+
+_HE_NAME = re.compile(r"[א-ת'\"׳״\- .]+")
+
+
+def clean_hebrew_name(he: str) -> str:
+    """Without vowel points; '' when it holds anything but Hebrew letters (a model once
+    answered with Bengali letters inside a name)."""
+    he = re.sub(r"[֑-ֽֿ-ׇ]", "", he or "").strip()
+    return he if _HE_NAME.fullmatch(he) and re.search(r"[א-ת]", he) else ""
+
+
+def settled_names(mem: dict) -> dict[str, str]:
+    """{English: Hebrew} as earlier episodes spelled each name most often (a tie settles nothing).
+    A compound ("Matsumoto Rangiku", "Matsumoto-san") takes the settled spelling of each of its
+    parts, so it never disagrees with the name alone."""
+    out = {}
+    for en, votes in (mem.get("names_he") or {}).items():
+        ranked = sorted(votes.items(), key=lambda kv: -kv[1])
+        if ranked and (len(ranked) == 1 or ranked[0][1] > ranked[1][1]):
+            out[en] = ranked[0][0]
+    for en, he in list(out.items()):
+        en_parts, he_parts = re.split(r"[ -]", en), re.split(r"([ -])", he)
+        if len(en_parts) > 1 and len(en_parts) == len(he_parts[::2]):
+            he_parts[::2] = [out.get(e, h) if e in out and " " not in out[e] and "-" not in out[e] else h
+                             for e, h in zip(en_parts, he_parts[::2])]
+            out[en] = "".join(he_parts)
+    return out
+
+
+def vote_names(mem: dict, names: dict[str, str], episode: str) -> bool:
+    """Count this episode's spellings once (a re-translation does not vote again)."""
+    done = mem.setdefault("names_he_episodes", [])
+    if episode in done:
+        return False
+    table = mem.setdefault("names_he", {})
+    for en, he in names.items():
+        he = clean_hebrew_name(he)
+        if he:
+            votes = table.setdefault(en, {})
+            votes[he] = votes.get(he, 0) + 1
+    done.append(episode)
+    return True

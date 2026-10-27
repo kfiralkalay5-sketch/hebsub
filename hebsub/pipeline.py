@@ -1096,6 +1096,14 @@ def finish_translation(cfg, engine: Engine, video: Path, english: Path, work_dir
     return output
 
 
+def _named_in(name: str, english: str) -> bool:
+    """A name from the series memory is a name here too: capitalised in mid-sentence at least
+    once and never a lower-case word ("Will you..." / "I will" is not Will)."""
+    if re.search(r"(?<![A-Za-z])" + re.escape(name.lower()) + r"(?![A-Za-z])", english):
+        return False
+    return re.search(r"(?<=[a-z,] )" + re.escape(name) + r"(?![A-Za-z])", english) is not None
+
+
 def translate_video(video: Path, cfg, engine: Engine, log: Log, *,
                     series_id=None, episode_id=None, movie_id=None,
                     force: bool = False, output_dir: Path | None = None,
@@ -1133,7 +1141,21 @@ def translate_video(video: Path, cfg, engine: Engine, log: Log, *,
             # one Hebrew spelling per name for the whole episode (local models otherwise
             # leave names in Latin letters or spell them differently cue to cue)
             b = json.loads(bible_path.read_text(encoding="utf-8-sig"))
-            b["names_he"] = editorial.hebrew_names(engine, b, english.read_text(encoding="utf-8-sig", errors="replace"), log)
+            en_text = english.read_text(encoding="utf-8-sig", errors="replace")
+            names = editorial.hebrew_names(engine, b, en_text, log)
+            b["names_he"] = {k: v for k, v in ((k, memory.clean_hebrew_name(v)) for k, v in names.items()) if v}
+            series = memory.series_key(video, cfg.get("memory.series_roots", ["TV Shows"])) \
+                if cfg.get("memory.enabled", True) else None
+            mem = memory.load(cfg, series) if series else None
+            if mem:
+                # one spelling per name for the whole series: the one earlier episodes used most
+                # (Bleach had מצומוטו/מצומטו 32/28 and three spellings of Soul Society)
+                settled = {en: he for en, he in memory.settled_names(mem).items()
+                           if en in b["names_he"] or _named_in(en, en_text)}
+                changed = sum(b["names_he"].get(en) != he for en, he in settled.items())
+                b["names_he"] = {**b["names_he"], **settled}
+                if changed:
+                    log(f"names: {changed} spelling(s) as earlier episodes of the series had them")
             if cfg.get("series_terms.enabled", True):
                 # names and franchise terms as the series' own human Hebrew subtitles have them
                 # (Middle-earth = הארץ התיכונה); they win over the model's transliterations
@@ -1142,6 +1164,8 @@ def translate_video(video: Path, cfg, engine: Engine, log: Log, *,
             rules = learn.rules_for(memory.series_key(video, cfg.get("memory.series_roots", ["TV Shows"])))
             if rules:  # the user's own spelling of a name wins over every table
                 b["names_he"] = {k: learn.apply_rules(rules, v) for k, v in b["names_he"].items()}
+            if mem and memory.vote_names(mem, b["names_he"], video.stem):
+                memory.save(cfg, series, mem)
             bible_path.write_text(json.dumps(b, ensure_ascii=False, indent=2), encoding="utf-8")
 
         prepare_args = [

@@ -134,3 +134,29 @@ def test_learning_from_user_corrections(learn, tmp_path):
     os.utime(out, (2e9, 2e9))
     learn.refresh_baseline(out)
     assert learn.collect_corrections(print) == 0
+
+
+def test_gender_learned_from_corrections(learn, tmp_path):
+    from hebsub.config import Config
+    from hebsub import memory
+    cfg = Config.load()
+    cfg._d.setdefault("memory", {})["dir"] = str(tmp_path / "mem")
+    memory.save(cfg, "My Show", {"series": "My Show", "relationships": [], "characters": [
+        {"name": "Mandy", "aliases": [], "grammatical_gender": "masculine", "confidence": "medium"},
+        {"name": "Connie", "aliases": [], "grammatical_gender": "masculine", "confidence": "low", "locked": True}]})
+    rows = [  # two lines that name Mandy, the 'you' form corrected the same way both times
+        ("Mandy, you know I can't do that.", "מנדי, אתה יודע שאני לא יכול.", "מנדי, את יודעת שאני לא יכול."),
+        ("Where are you going, Mandy?", "לאן אתה הולך, מנדי?", "לאן את הולכת, מנדי?"),
+        # Connie is locked by hand; the unnamed line belongs to its own line only
+        ("Connie, you know that.", "קוני, אתה יודע את זה.", "קוני, את יודעת את זה."),
+        ("Connie, are you sure?", "קוני, אתה בטוח?", "קוני, את בטוחה?"),
+        ("You know that.", "אתה יודע את זה.", "את יודעת את זה."),
+        ("You know that.", "אתה יודע את זה.", "את יודעת את זה.")]
+    learn.CORRECTIONS.parent.mkdir(parents=True, exist_ok=True)
+    learn.CORRECTIONS.write_text("".join(json.dumps({"series": "My Show", "en": e, "ours": o, "theirs": t},
+                                                    ensure_ascii=False) + "\n" for e, o, t in rows), encoding="utf-8")
+    assert learn.learn_genders(cfg, print) == {"My Show": {"Mandy": "feminine"}}
+    chars = {c["name"]: c for c in memory.load(cfg, "My Show")["characters"]}
+    assert (chars["Mandy"]["grammatical_gender"], chars["Mandy"]["confidence"]) == ("feminine", "high")
+    assert chars["Connie"]["grammatical_gender"] == "masculine"
+    assert learn.learn_genders(cfg, print) == {}  # nothing new the second time

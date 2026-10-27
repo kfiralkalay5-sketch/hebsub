@@ -673,6 +673,21 @@ _GENERIC_PATS = [re.compile(r"(?:^|[.!?]\s+|/\s*)(" + _GV + r"),", re.I),
                  re.compile(r"^\s*" + _VOC_INTJ + r",?\s+(" + _GV + r")\s*[,.!?]", re.I)]
 
 
+def vocative_names(text: str) -> list[str] | None:
+    """Names a one-speaker English line addresses ("Abby, you...", "..., Nina."); None when the
+    line has two speakers or no 'you'."""
+    text = re.sub(r"<[^>]+>", "", text or "").replace("\n", " / ")
+    if re.match(r"\s*-", text) or " / -" in text or not re.search(r"\byou", text, re.I):
+        return None
+    names = re.findall(r"(?:^|[.!?]\s+|/\s*)" + _NAME + ",", text) + re.findall(r",\s*" + _NAME + r"\s*[.!?]", text)
+    if '"' not in text:  # not inside quoted speech
+        # "Galpin? What are you...", "Hey, Thing, ...", "..., Enid, you..." (96-98% on the library)
+        names += re.findall(r"^\s*" + _NAME + r"[?!]\s+\S", text) + re.findall(
+            r"(?:^|[.!?]\s+)" + _VOC_INTJ + r",?\s+" + _NAME + r"\s*[,.!?]", text) + re.findall(
+            r",\s*" + _NAME + r"\s*(?:,|$)", text)
+    return names
+
+
 def vocative_listeners(english: dict[int, str], bible: dict) -> dict[int, str]:
     """{cue: 'm'|'f'} where a one-speaker line addresses a known character by name
     ("Abby, you...", "..., Nina."): 99% precise for both genders on the 293-video check."""
@@ -682,15 +697,10 @@ def vocative_listeners(english: dict[int, str], bible: dict) -> dict[int, str]:
     index = cast_mod.gender_index([p for p in people if p["gender"] in ("masculine", "feminine")])
     out = {}
     for cid, text in english.items():
-        text = re.sub(r"<[^>]+>", "", text or "").replace("\n", " / ")
-        if re.match(r"\s*-", text) or " / -" in text or not re.search(r"\byou", text, re.I):
+        names = vocative_names(text)
+        if names is None:
             continue
-        names = re.findall(r"(?:^|[.!?]\s+|/\s*)" + _NAME + ",", text) + re.findall(r",\s*" + _NAME + r"\s*[.!?]", text)
-        if '"' not in text:  # not inside quoted speech
-            # "Galpin? What are you...", "Hey, Thing, ...", "..., Enid, you..." (96-98% on the library)
-            names += re.findall(r"^\s*" + _NAME + r"[?!]\s+\S", text) + re.findall(
-                r"(?:^|[.!?]\s+)" + _VOC_INTJ + r",?\s+" + _NAME + r"\s*[,.!?]", text) + re.findall(
-                r",\s*" + _NAME + r"\s*(?:,|$)", text)
+        text = re.sub(r"<[^>]+>", "", text or "").replace("\n", " / ")
         gs = {g for g in (cast_mod.lookup(index, n) for n in names) if g}
         if len(gs) == 1:
             out[cid] = {"masculine": "m", "feminine": "f"}[gs.pop()]

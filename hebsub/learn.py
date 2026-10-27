@@ -482,10 +482,52 @@ def apply_rules(rules: dict[str, str], text: str) -> str:
     return text
 
 
+def learn_genders(cfg, log=print, min_count: int = 2) -> dict:
+    """A character the user keeps addressing in the other gender ("אתה יודע, מנדי" corrected to
+    "את יודעת, מנדי") gets that gender in the series memory, at high confidence, so later
+    episodes start from it. Only lines that name whom they speak to count; anything else
+    stays a correction of that one line."""
+    from . import editorial, memory
+    if not CORRECTIONS.is_file():
+        return {}
+    votes: dict[tuple, Counter] = defaultdict(Counter)
+    for line in CORRECTIONS.read_text(encoding="utf-8").splitlines():
+        try:
+            c = json.loads(line)
+        except ValueError:
+            continue
+        was, now = editorial._labels(c["ours"]).get("you"), editorial._labels(c["theirs"]).get("you")
+        names = editorial.vocative_names(c.get("en", ""))
+        if not was or not now or was == now or not names or len(set(names)) != 1:
+            continue
+        votes[(c.get("series") or "", names[0])][now] += 1
+    learned = {}
+    for (series, name), cnt in votes.items():
+        (g, n), = cnt.most_common(1)
+        if n < min_count or len(cnt) > 1 or not series:
+            continue
+        gender = {"m": "masculine", "f": "feminine"}[g]
+        mem = memory.load(cfg, series)
+        chars = mem.setdefault("characters", [])
+        char = next((ch for ch in chars if name.lower() in (x.lower() for x in memory._names(ch))), None)
+        if char is None:
+            char = {"name": name, "aliases": [], "episodes": []}
+            chars.append(char)
+        if char.get("locked") or (char.get("grammatical_gender") == gender and char.get("source") == "user"):
+            continue
+        if char.get("grammatical_gender") != gender:
+            log(f"learn: {series}: {name} is {gender} (the user corrected the 'you' form {n} times)")
+        char.update(grammatical_gender=gender, confidence="high", source="user")
+        memory.save(cfg, series, mem)
+        learned.setdefault(series, {})[name] = gender
+    return learned
+
+
 # ---------------------------------------------------------------- entry point
 
 def run(roots, cfg, log=print, mine_library: bool = True, limit: int | None = None) -> dict:
     res = {"corrections": collect_corrections(log)}
+    res["genders"] = learn_genders(cfg, log)
     if mine_library and roots:
         res.update(mine(roots, cfg, log, limit=limit))
     return res

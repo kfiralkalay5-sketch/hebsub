@@ -80,6 +80,15 @@ def test_reflow_keeps_chevre_apart():
     assert E.reflow("החבר'ה האלה לא צריכים\nלדעת") == "החבר'ה האלה לא צריכים\nלדעת"
 
 
+def test_reflow_splits_long_single_line():
+    from hebsub import editorial as E
+    out = E.reflow("אני באותה רמה של סגן קפטן, ובכל זאת רק אתה מתעייף.")
+    assert out == "אני באותה רמה של סגן קפטן,\nובכל זאת רק אתה מתעייף."  # after the comma
+    assert E.reflow(out) == out
+    assert E.reflow("-מה אתה עושה פה בשעה כזאת מאוחרת בלילה, אחי?") == "-מה אתה עושה פה בשעה כזאת מאוחרת בלילה, אחי?"
+    assert E.reflow("זה בסדר גמור.") == "זה בסדר גמור."
+
+
 def test_prepare_build_roundtrip_utf8(home, tmp_path):
     """The bundled CueIvrit tool runs as a subprocess: Hebrew must survive on every OS."""
     from hebsub.config import Config

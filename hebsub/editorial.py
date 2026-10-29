@@ -1052,8 +1052,9 @@ august september october november december english american""".split())
 
 
 def reflow(text: str, max_lines: int = 2) -> str:
-    """Join a 3+ line cue into two balanced lines (dialogue dashes keep their own line);
-    a lone prefix letter left at a line end (ש / ל / ב) is joined to the next word."""
+    """Join a 3+ line cue, or split a single line over LINE_MAX, into two balanced lines
+    (dialogue dashes keep their own line); a lone prefix letter left at a line end (ש / ל / ב)
+    is joined to the next word."""
     # לא אחרי גרש: ה-ה' של "חבר'ה" אינה אות שימוש ("החבר'ה האלה" הודבק ל"החבר'ההאלה", Avatar S01E08)
     text = re.sub(r"(?<![א-ת'׳\"״])([ושבלמכה])\s*\n\s*(?=[א-ת])", r"\n\1", text or "")
     text = re.sub(r"(?<![א-ת'׳\"״])([ושבלמכה]) (?=[א-ת])", r"\1", text)
@@ -1062,19 +1063,37 @@ def reflow(text: str, max_lines: int = 2) -> str:
         # never end the first line on a preposition / the object marker: move it down
         m = re.search(r"(?<![א-ת])(את|על|של|כמו|עם|בלי|אל|מול|אצל|לגבי)$", lines[0])
         if m and len(lines[1]) + len(m.group(1)) + 1 <= 46 and lines[0][:m.start()].strip():
-            return lines[0][:m.start()].rstrip() + "\n" + m.group(1) + " " + lines[1]
+            lines = [lines[0][:m.start()].rstrip(), m.group(1) + " " + lines[1]]
+            text = "\n".join(lines)
     if len(lines) <= max_lines:
-        return text
-    dash = [i for i, l in enumerate(lines) if l.lstrip().startswith("-")]
-    if len(dash) == 2 and dash[0] == 0:
-        return " ".join(lines[:dash[1]]) + "\n" + " ".join(lines[dash[1]:])
+        # a single line over LINE_MAX (1.8% of cues in 40 episodes, some 56+ characters): two
+        # balanced lines. Two long lines keep the model's own break (re-cutting them split names
+        # and "סקוואד / 13" more often than it helped)
+        if len(lines) != 1 or len(lines[0]) <= LINE_MAX or lines[0].startswith("-"):
+            return text
+    else:
+        dash = [i for i, l in enumerate(lines) if l.lstrip().startswith("-")]
+        if len(dash) == 2 and dash[0] == 0:
+            return " ".join(lines[:dash[1]]) + "\n" + " ".join(lines[dash[1]:])
     words = " ".join(lines).split()
+    if len(words) < 2:
+        return text
     best, cut = None, 1
     for i in range(1, len(words)):
-        a, b = len(" ".join(words[:i])), len(" ".join(words[i:]))
-        if best is None or abs(a - b) < best:
-            best, cut = abs(a - b), i
+        a, b = " ".join(words[:i]), " ".join(words[i:])
+        # the longer line first, then balance; a cut after a sentence or a comma reads better,
+        # one after a preposition / the object marker worse
+        score = max(len(a), len(b)) + abs(len(a) - len(b)) / 4
+        score -= 10 if re.search(r"[.?!]$", a) else 7 if re.search(r"[,:;]$", a) else 0
+        score += 8 if words[i - 1] in _NO_LINE_END else 0
+        if best is None or score < best:
+            best, cut = score, i
     return " ".join(words[:cut]) + "\n" + " ".join(words[cut:])
+
+
+LINE_MAX = 42
+_NO_LINE_END = {"את", "על", "של", "כמו", "עם", "בלי", "אל", "מול", "אצל", "לגבי", "כי", "אם", "לא", "בין", "אחרי",
+                "לפני", "בשביל", "מה", "כל"}
 
 
 

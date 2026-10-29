@@ -89,6 +89,18 @@ def test_reflow_splits_long_single_line():
     assert E.reflow("זה בסדר גמור.") == "זה בסדר גמור."
 
 
+def test_drop_untranslated(tmp_path):
+    from hebsub import pipeline as P
+    srt = tmp_path / "x.he.srt"
+    cues = ["\u202bשלום.\u200f\u202c", "Ithnmc.enre.", "¶¶", "(מקהלה שרה)", "{\\an8}[ לוטוס לבנה ]", "FBI", "<b>Ryuusenka!</b>"]
+    srt.write_text("\n\n".join(f"{i}\n00:00:0{i},000 --> 00:00:0{i},500\n{t}" for i, t in enumerate(cues, 1)) + "\n",
+                   encoding="utf-8")
+    assert P._drop_untranslated(srt) == 2               # the symbols and the sound tag
+    kept = srt.read_text(encoding="utf-8")
+    assert "לוטוס לבנה" in kept and "Ryuusenka" in kept and "Ithnmc" in kept
+    assert P._drop_untranslated(srt, transcript=True) == 2  # a transcript: gibberish and romaji go too
+    assert "FBI" in srt.read_text(encoding="utf-8")
+
 def test_prepare_build_roundtrip_utf8(home, tmp_path):
     """The bundled CueIvrit tool runs as a subprocess: Hebrew must survive on every OS."""
     from hebsub.config import Config

@@ -868,9 +868,37 @@ def _drop_interjections(srt: Path, english: dict[int, str]) -> int:
     return dropped
 
 
+def _drop_untranslated(srt: Path, transcript: bool = False) -> int:
+    """Remove cues with nothing for a Hebrew reader: a whole-cue sound tag ("(מקהלה שרה)",
+    "[בערבית]"; not a top / bold sign like Bleach's "{\\an8}[ לוטוס לבנה ]"), and, with no Hebrew letter, only symbols ("¶¶", "* *"), an ASS drawing
+    ("m 0 0 l 561 4 ...") or an IRC / web credit. When the English is a Whisper or OCR
+    transcript, also untranslatable gibberish ("Ithnmc.enre.", "usc разг Gearablığım"): no
+    Hebrew but lowercase Latin or another script (acronyms and numbers stay). Not for real
+    subtitles, where a romaji attack name in bold is kept on purpose (Bleach)."""
+    raw = srt.read_text(encoding="utf-8-sig")
+    blocks = [b for b in re.split(r"\n{2,}", raw.strip("\n")) if b.strip()]
+    keep, dropped = [], 0
+    for b in blocks:
+        lines = b.split("\n")
+        t = re.sub(r"[\u200e\u200f\u202a-\u202e]|<[^<>]*>|\{[^}]*\}", "", " ".join(lines[2:])).strip()
+        bare = not re.search(r"[א-ת]", t) and (
+            not re.search(r"\w", t) or re.match(r"m -?\d", t) or re.search(r"@|\birc\.|www\.", t)
+            or (transcript and re.search(r"[a-z]|[^\W\d_A-Za-z]", t)))
+        # a bracketed cue placed at the top or in bold is an on-screen sign / attack name, not SDH
+        tag = re.fullmatch(r"[(\[][^)\]]*[)\]]", t) and not re.search(r"\{\\an\d|<b>", b)
+        if "-->" in (lines[1] if len(lines) > 1 else "") and (bare or tag):
+            dropped += 1
+            continue
+        keep.append(b)
+    if dropped:
+        srt.write_text("\n\n".join(keep) + "\n", encoding="utf-8-sig")
+    return dropped
+
+
 def finish_translation(cfg, engine: Engine, video: Path, english: Path, work_dir: Path, bible: dict,
                        bible_path: Path, voices: dict, sdh_mode: str, decisions, log: Log,
-                       output_dir: Path | None = None, reviewed: Path | None = None) -> Path:
+                       output_dir: Path | None = None, reviewed: Path | None = None,
+                       transcript: bool = False) -> Path:
     """Everything after the batches are translated: merge, repairs, review, gender, spelling,
     build and audit. Separate so post-processing changes can be re-tested on saved batches
     (bench/post_only.py) without translating again."""
@@ -1085,6 +1113,9 @@ def finish_translation(cfg, engine: Engine, video: Path, english: Path, work_dir
         dropped = _drop_interjections(staged, {c["index"]: c.get("clean_text") or "" for c in man["cues"]})
         if dropped:
             log(f"build: dropped {dropped} interjection-only cue(s) (Hmm., Oh., Uh-huh.) as Israeli subtitles do")
+    junk = _drop_untranslated(staged, transcript)
+    if junk:
+        log(f"build: dropped {junk} cue(s) with no Hebrew (untranslatable ASR gibberish) or only a sound tag")
 
     shutil.copy2(staged, output)
     log(f"written: {output}")
@@ -1130,6 +1161,7 @@ def translate_video(video: Path, cfg, engine: Engine, log: Log, *,
                                   series_id=series_id, episode_id=episode_id,
                                   movie_id=movie_id)
 
+        transcript = english.parent.name in ("asr", "ocr")  # Whisper / OCR: gibberish possible
         english = _repair_sound_tags(english, work_dir, log)
         sdh_mode = cfg.get("subtitles.sdh_mode", "remove")
         bible_path = build_character_bible(cfg, engine, english, work_dir, log,
@@ -1225,7 +1257,7 @@ def translate_video(video: Path, cfg, engine: Engine, log: Log, *,
                 log(f"translate: batch {i}/{len(batch_files)} in {took:.0f}s (eta {eta:.0f} min)")
 
         return finish_translation(cfg, engine, video, english, work_dir, bible, bible_path, voices,
-                                  sdh_mode, decisions, log, output_dir)
+                                  sdh_mode, decisions, log, output_dir, transcript=transcript)
     finally:
         if claimed:
             TRANSLATING_LOCK.unlink(missing_ok=True)  # training resumes on its own

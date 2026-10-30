@@ -149,6 +149,57 @@ def test_interjection_screams():
     for t in ("Wow!", "Whoa!", "Ouch!", "Hiya!", "Ha!", "Ahh, okay."):  # human Hebrew keeps these more often
         assert not P._INTERJECTION.fullmatch(t), t
 
+
+_FAKE_ALIGN = """import json, sys
+q = json.loads(sys.stdin.read())
+sim = lambda e, h: 1.0 if h.replace("\\n", " ") == "HE:" + e else 0.6 if ("HE:" + e) in h else 0.2
+out = {}
+if q.get("en"):
+    en, he = q["en"], q["he"]
+    s0 = [sim(e, h) for e, h in zip(en, he)]
+    lag = [k > 0 and sim(en[k - 1], he[k]) > s0[k] for k in range(len(en))]
+    runs, k = [], 0
+    while k < len(en):
+        if lag[k]:
+            j = k
+            while j + 1 < len(en) and lag[j + 1]:
+                j += 1
+            if j - k + 1 >= 3:
+                runs.append(["lag", k, j])
+            k = j + 1
+        else:
+            k += 1
+    out.update(runs=runs, sim=s0)
+if q.get("pairs"):
+    out["pair_sim"] = [sim(e, h) if not e.startswith("HE:") else (1.0 if e == h else 0.2) for e, h in q["pairs"]]
+print(json.dumps(out))
+"""
+
+
+class _EchoEngine:
+    name = "ollama"
+
+    def translate_batch(self, batch, bible, sdh_mode, constrained=True):
+        return [{"cue_id": it["cue_id"], "text": "HE:" + it["source"]} for it in batch["items"]]
+
+
+def test_realign_shifts(tmp_path):
+    from hebsub import pipeline as P
+    en = {i: f"line {i}" for i in range(1, 13)}
+    he = {i: "HE:" + en[i] for i in en}
+    for i in range(5, 10):  # cues 5-9 carry the Hebrew of 4-8; 9's own line is lost
+        he[i] = "HE:" + en[i - 1]
+    recs = [{"cue_id": i, "text": he[i]} for i in en]
+    (tmp_path / "batches").mkdir()
+    (tmp_path / "batches" / "batch_0001.json").write_text(json.dumps({"batch_number": 1, "items": [
+        {"cue_id": i, "source": en[i], "translate": True} for i in en]}), encoding="utf-8")
+    script = tmp_path / "align.py"
+    script.write_text(_FAKE_ALIGN, encoding="utf-8")
+    cfg = type("C", (), {"get": lambda self, k, d=None: {"align.python": sys.executable, "align.script": str(script)}.get(k, d)})()
+    out, n = P._realign_shifts(cfg, _EchoEngine(), recs, en, tmp_path, {}, "remove", lambda m: None)
+    assert [r["text"] for r in out] == ["HE:" + en[i] for i in en]
+    assert n == 5
+
 def test_prepare_build_roundtrip_utf8(home, tmp_path):
     """The bundled CueIvrit tool runs as a subprocess: Hebrew must survive on every OS."""
     from hebsub.config import Config

@@ -774,6 +774,97 @@ def misaligned(items: list[dict], records: list[dict]) -> str:
     return ""
 
 
+def _realign_shifts(cfg, engine: Engine, recs: list[dict], src: dict[int, str], work_dir: Path,
+                    bible: dict, sdh_mode: str, log: Log) -> tuple[list[dict], int]:
+    """Hebrew that slid by one cue part-way through a batch: the model split a long English line
+    over two cue ids and kept going to the end of the batch (Rookie S08E12 249-270, Bleach 16 46-60;
+    about 1 library title in 40). misaligned() only sees a whole batch sliding. A LaBSE check
+    (optional: align.python + align.script, bench/shift/scan_cli.py) finds runs of 3+ cues whose
+    Hebrew fits the neighbouring English better; the texts move back to their own cues and the one
+    cue left without its Hebrew is translated again on its own. Kept only if the similarity rises."""
+    py, script = cfg.get("align.python"), cfg.get("align.script")
+    if not py or not script or not Path(py).is_file() or not Path(script).is_file():
+        return recs, 0
+    by = {r["cue_id"]: r for r in recs}
+    ids = [r["cue_id"] for r in recs if (r.get("text") or "").strip() and (src.get(r["cue_id"]) or "").strip()]
+    if len(ids) < 10:
+        return recs, 0
+
+    def check(texts=None, pairs=None):
+        q = {"en": [src[i] for i in ids], "he": texts} if texts else {}
+        q["pairs"] = pairs or []
+        out = subprocess.run([py, script], input=json.dumps(q, ensure_ascii=False), capture_output=True,
+                             text=True, timeout=900)
+        return json.loads(out.stdout)
+    old = [by[i]["text"] for i in ids]
+    try:
+        res = check(old)
+    except Exception as exc:  # noqa: BLE001 - the check is optional
+        log(f"align: check skipped ({str(exc)[:120]})")
+        return recs, 0
+    if not res.get("runs"):
+        return recs, 0
+    batches = {}
+    for bf in sorted((work_dir / "batches").glob("batch_*.json")):
+        b = json.loads(bf.read_text(encoding="utf-8-sig"))
+        for it in b.get("items", []):
+            batches[it["cue_id"]] = (b, it)
+    new, gaps, spans, joins = list(old), [], [], []
+    for kind, k, j in res["runs"]:
+        if kind == "lag" and k > 0:  # Hebrew k..j belongs to English k-1..j-1; cue j lost its own
+            for p in range(k - 1, j):
+                new[p] = old[p + 1]
+            gaps.append(j)
+            spans.append((k - 1, j))
+            joins.append((k - 1, old[k - 1], old[k]))  # the split line: both halves
+        elif kind == "lead" and j + 1 < len(ids):  # Hebrew k..j belongs to k+1..j+1; cue k lost its own
+            for p in range(k, j + 1):
+                new[p + 1] = old[p]
+            gaps.append(k)
+            spans.append((k, j + 1))
+            joins.append((j + 1, old[j], old[j + 1]))
+    # where the slide began the model had usually split one English line over two cues ("Look, Elijah
+    # saw an opportunity" / "to ruin my life the way I ruined his"); keep both halves when they fit better
+    # (but not when the two are the same sentence twice, as in Bleach 16: "אם אצטרך לעזוב..." x2)
+    if joins:
+        m = len(joins)
+        try:
+            ps = check(pairs=[[src[ids[p]], a + "\n" + b] for p, a, b in joins] + [[src[ids[p]], new[p]] for p, _, _ in joins]
+                       + [[a, b] for _, a, b in joins])["pair_sim"]
+            for n_, (p, a, b) in enumerate(joins):
+                if ps[n_] > ps[m + n_] + 0.03 and ps[2 * m + n_] < 0.75:
+                    new[p] = a + "\n" + b
+        except Exception:  # noqa: BLE001
+            pass
+    for g in gaps:
+        b, it = batches.get(ids[g], (None, None))
+        if not it:
+            continue
+        try:
+            got = _translate_one_batch(engine, dict(b, items=[it]), bible, sdh_mode, log, attempts=2)
+        except (EngineError, PipelineError):
+            continue
+        text = next((r["text"] for r in got if r.get("cue_id") == ids[g] and (r.get("text") or "").strip()), None)
+        if text:
+            new[g] = text
+    try:
+        after = check(new)
+    except Exception as exc:  # noqa: BLE001
+        log(f"align: re-check failed ({str(exc)[:120]}), keeping the translation as it was")
+        return recs, 0
+    fixed = 0
+    for a, z in spans:
+        before = sum(res["sim"][a:z + 1]) / (z - a + 1)
+        now = sum(after["sim"][a:z + 1]) / (z - a + 1)
+        if now >= before + 0.1:
+            for p in range(a, z + 1):
+                if by[ids[p]]["text"] != new[p]:
+                    by[ids[p]]["text"] = new[p]
+                    fixed += 1
+            log(f"align: cues {ids[a]}-{ids[z]} had slid by one, moved back (similarity {before:.2f} -> {now:.2f})")
+    return recs, fixed
+
+
 def translate_checked(engine: Engine, batch: dict, bible: dict, sdh_mode: str, log: Log) -> list[dict]:
     """_translate_one_batch, re-done in halves when the result looks slid."""
     records = _translate_one_batch(engine, batch, bible, sdh_mode, log)
@@ -915,6 +1006,7 @@ def finish_translation(cfg, engine: Engine, video: Path, english: Path, work_dir
         recs = json.loads(tpath.read_text(encoding="utf-8"))
         man = json.loads(manifest_path.read_text(encoding="utf-8-sig"))
         src0 = {c["index"]: c.get("clean_text") or c.get("source_text", "") for c in man["cues"]}
+        recs, _ = _realign_shifts(cfg, engine, recs, src0, work_dir, bible, sdh_mode, log)
         recs, _ = editorial.leftover_pass(engine, recs, src0, log, names=bible.get("names_he"))
         recs, _ = editorial.truncation_pass(engine, recs, src0, log, names=bible.get("names_he"))
         recs, _ = editorial.terms_pass(engine, recs, src0, bible.get("names_he"), log)

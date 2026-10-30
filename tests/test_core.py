@@ -352,3 +352,14 @@ def test_voicekit_prompt_and_absence(home):
     text = K._example(cues, 1, None, {}, ["Ann (woman)"])
     assert text.startswith("Characters: Ann (woman)") and ">> [?, ?] Are you coming?" in text
     assert "[two speakers]" in text
+
+
+def test_feminine_you_labels():
+    """The pronoun את before לא / a participle / a question mark, and more imperatives (Georgie
+    S01E06: "מה את עושה כאן?" to Georgie had no label, so the gender veto never saw it)."""
+    from hebsub.labels import label
+    for t in ("היי, מה את עושה כאן?", "את לא הולכת לענות?", "שאת מפיקה מזה תמורה לכסף.", "זוזי.", "גם את?"):
+        assert label(t).get("you") == "f", t
+    assert label("זוז.").get("you") == "m"
+    for t in ("קח את זה, את לא צריכה", "אני לא אראה שוב את לסטר או את מיקה", "ראיתי את מכונת הכביסה"):
+        assert label(t).get("you") is None, t  # mixed genders / the object marker

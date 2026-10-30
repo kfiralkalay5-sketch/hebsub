@@ -36,6 +36,19 @@ IMP_M = {"בוא", "חכה", "תקשיב", "שמע", "תראה", "תסתכל", "
 IMP_F = {"בואי", "חכי", "תקשיבי", "שמעי", "תראי", "תסתכלי", "תפסיקי", "קומי", "שבי", "רוצי", "תגידי", "תעשי",
          "תביאי", "תירגעי", "תיזהרי", "היזהרי", "סעי", "תחזרי", "תישארי", "תעזבי", "תפתחי", "תסגרי", "תעני",
          "תשתקי", "תני", "לכי", "תלכי", "תהיי", "תאכלי", "תשבי", "תקומי", "תדברי", "תנשמי", "תחכי", "תבואי"}
+# more imperatives (Georgie S01E06 "זוזי." had no label); הסתכל / שכח / שאל are also past tense
+IMP_F |= {"זוזי", "קחי", "עזבי", "צאי", "רדי", "היכנסי", "נסי", "שתקי", "סלחי", "חשבי", "זכרי", "עזרי",
+          "עצרי", "חייכי", "שכחי", "שאלי", "מהרי", "נוחי", "החזיקי", "תפסי", "הקשיבי", "הסתכלי", "תחזיקי"}
+IMP_M |= {"זוז", "קח", "עזוב", "צא", "רד", "נסה", "שתוק", "זכור", "עזור", "עצור", "תפוס", "הקשב"}
+# words that follow the pronoun את but never the object marker את (which precedes a definite noun,
+# זה, כל, a name): "את לא הולכת", "מה את עושה כאן?" had no label, so the gender veto never saw them
+# although the addressee classifier was right (22 fixes / 2 breaks at p<0.3 on the human-Hebrew
+# videos, was 3 / 2; bench/gender_auto/labels_v2.py)
+YOU_F_NEXT = {"לא", "בסדר", "כבר", "עדיין", "באמת", "בטח", "בכלל", "פה", "כאן", "שם", "תמיד", "פשוט",
+              "ממש", "צריכה", "יכולה", "רוצה", "אמורה", "חייבת", "מוכנה", "בטוחה", "עושה", "נראית",
+              "נשמעת", "הולכת", "באה", "נמצאת", "מתכוונת", "מרגישה", "צוחקת", "רצינית", "יודעת", "חושבת",
+              "זוכרת", "מבינה", "אוהבת", "שונאת", "גרה", "עובדת", "מדברת", "יושבת", "נשארת", "חוזרת",
+              "יוצאת", "נכנסת", "עוזבת", "מחכה", "מקווה", "מנסה", "רואה", "שומעת", "לבד", "בהריון", "תהיי"}
 SKIP = {"לא", "כבר", "רק", "גם", "פשוט", "עדיין", "באמת", "ממש", "עוד", "תמיד", "כולנו"}
 PL_M = {"יכולים", "רוצים", "צריכים", "יודעים", "הולכים", "באים", "חייבים", "בטוחים", "מוכנים", "נכנסים",
         "יוצאים", "חוזרים", "עובדים", "גרים", "נשארים", "חושבים", "אוהבים", "שמחים", "עסוקים", "נמצאים"}
@@ -83,12 +96,19 @@ def label(he: str) -> dict:
         if w in IMP_F or (_fem_future(w) and w not in IMP_F and i == 0):
             put("you", "f")
         if w in YOU_F and nxt:
-            n = nxt[0]
+            n, nn = nxt[0], (nxt[1] if len(nxt) > 1 else "")
             # pronoun את + feminine singular participle/adjective; the object marker את comes
             # before nouns (often ה-, or plural ...ות)
-            if n in F1 or (i in opens and n.endswith("ת") and not n.endswith("ות") and not n.startswith("ה")
-                           and len(n) >= 4 and n not in {"זאת", "אותת"}):
+            if n in F1 or n in YOU_F_NEXT or (i in opens and n.endswith("ת") and not n.endswith("ות")
+                                               and not n.startswith("ה") and len(n) >= 4 and n not in {"זאת", "אותת"}):
                 put("you", "f")
+            # a participle את מפיקה / את מדברת (5+ letters: not the name מיקה; a construct noun
+            # after the object marker is followed by a definite one: את מכונת הכביסה)
+            elif n.startswith("מ") and n[-1:] in "תה" and len(n) >= 5 and not n.endswith("ות") \
+                    and not nn.startswith("ה"):
+                put("you", "f")
+        if w in YOU_F and re.search(rf"(?<![א-ת]){w}\s*[?!]", he):
+            put("you", "f")  # ואת? / גם את!
         if w in ("אתם", "ואתם", "שאתם"):
             put("you_pl", "m")
         # אתן is also "I will give" (אני אתן לך): only with a feminine plural form after it

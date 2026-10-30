@@ -373,6 +373,16 @@ def _repair_sound_tags(src: Path, work_dir: Path, log: Log) -> Path:
         new = [re.sub(r"^(\s*-?\s*)\[(?:[A-Z][\w'.-]*)(?: [A-Z][\w'.-]*){0,2}\]\s*(?=\S)", r"\1", l) for l in new]
         # a sound tag in front of dialogue ("[sharp inhale] The bandits") was translated with it
         new = [re.sub(r"^(\s*-?\s*(?:<i>)?)\[[a-z][^\]\n]{0,40}\]\s*(?=[^\s\[])", r"\1", l) for l in new]
+        # ... inside a line ("Eh. [mumbles] Just gimme a sec."), and a tag alone on its line over the
+        # dialogue ("[Kayoko on speaker]" / "<i>Shelter in your homes!</i>", Avatar GRACE SDH)
+        new = [re.sub(r"(?<=\S)[ \t]*\[[a-z][^\]\n]{0,40}\]([ \t]*:)?[ \t]*(?=\S)",
+                      lambda m: ": " if m.group(1) else " ", l) for l in new]
+        new = [re.sub(r"^(\s*-?\s*(?:<i>)?)[A-Z][A-Z .'&-]{1,24}:\s*", r"\1", l) for l in new]  # "ANNOUNCER [on TV]:"
+        if len(new) > 1:
+            kept = [l for l in new if not re.fullmatch(r"\s*-?\s*(?:<i>)?\[[^\]\n]{1,40}\](?:</i>)?\s*", l)]
+            if kept and len(kept) < len(new) and len(kept) == 1:
+                kept = [re.sub(r"^(\s*(?:<i>)?)-\s*", r"\1", kept[0])]  # one speaker left: no dialogue dash
+            new = kept or new
         if new != lines[2:]:
             n5 += 1
             new = [l for l in new if l.strip()] or ["[silence]"]
@@ -385,11 +395,14 @@ def _repair_sound_tags(src: Path, work_dir: Path, log: Log) -> Path:
     # גם תיאור שנשבר על שתי שורות או שאין לו ♪ סוגר ("♪ ominous music plays" / "...music\nplays ♪")
     # some SDH tracks mark music with asterisks ("* foreboding music plays *", Avatar FENiX)
     fixed = re.sub(r"(?m)^([ \t]*-?[ \t]*(?:<i>)?)\*[ \t]*([^*\n]{1,90}?)[ \t]*\*", r"\1♪ \2 ♪", fixed)
-    fixed, n6 = re.subn(r"♪[ \t]*((?:(?!\n\s*\n)[^♪]){0,90}?\b(?:music|song|melody|tune|score|humming|whistling|"
+    # ... or with no closing asterisk ("* tense music playing", "-* dramatic theme music plays", GRACE)
+    fixed = re.sub(r"(?m)^([ \t]*-?[ \t]*(?:<i>)?)\*[ \t]*(?=[^*\n]*\b(?:music|musical|song|playing|plays)\b)([^*\n]{1,90})$",
+                   r"\1♪ \2 ♪", fixed, flags=re.I)  # closed here: the dialogue on the next line is not part of it
+    fixed, n6 = re.subn(r"♪[ \t]*((?:(?!\n\s*\n)[^♪]){0,90}?\b(?:music|musical|stinger|song|melody|tune|score|humming|whistling|"
                         r"fanfare|plays|playing|continues|ends|swells|fades|stops|resumes|intensifies|builds)\b"
                         r"(?:(?!\n\s*\n)[^♪]){0,50}?)[ \t]*(?:♪|(?=\n\s*\n)|\Z)",
                         lambda m: (f"[{' '.join(m.group(1).split())}]" if len(m.group(1).split()) <= 10
-                                   and re.search(r"\bmusic\b|\b(?:plays|playing|continues|ends|swells|fades|stops|"
+                                   and re.search(r"\bmusic(?:al)?\b|\bstinger\b|\b(?:plays|playing|continues|ends|swells|fades|stops|"
                                                  r"resumes|intensifies|builds)\s*$", m.group(1).strip(), re.I)
                                    else m.group(0)), fixed, flags=re.I)
     n4 += n6
@@ -981,6 +994,8 @@ def _drop_untranslated(srt: Path, transcript: bool = False) -> int:
         # a bracketed cue placed at the top or in bold is an on-screen sign / attack name, not SDH
         tag = re.fullmatch(r"[(\[][^)\]]*[)\]]", t) and not re.search(r"\{\\an\d|<b>", b)
         tag = tag or re.fullmatch(r"\*[^*]+\*", t)  # "*נשימות כבדות*" (a transcript's sound description)
+        # a music description that reached the translation ("מוזיקה דרמטית", "* מוזיקה מותחת"): short, no sentence
+        tag = tag or re.fullmatch(r"[-*♪\s]*ה?מוזיקה(?:\s+[א-ת]+){0,4}\s*[*♪]?", t)
         if "-->" in (lines[1] if len(lines) > 1 else "") and (bare or tag):
             dropped += 1
             continue

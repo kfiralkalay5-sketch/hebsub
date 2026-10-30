@@ -156,6 +156,24 @@ def test_transcript_asterisks(tmp_path):
                    encoding="utf-8")
     assert P._drop_untranslated(srt) == 1 and "שלום" in srt.read_text(encoding="utf-8")
 
+
+def test_sdh_tags_in_source(tmp_path):
+    from hebsub import pipeline as P
+    cues = ["♪ tense musical stinger ♪", "-* dramatic theme music plays\n-<i> Fire.</i>",
+            "[Kayoko on speaker]\n<i>Shelter in your homes!</i>", "Eh. [mumbles] Just gimme a sec.",
+            "-[chuckles]\n-I know.", "ANNOUNCER [on TV]: Please", "♪ Twinkle twinkle little star ♪"]
+    src = tmp_path / "x.en.srt"
+    src.write_text("\n\n".join(f"{i}\n00:00:0{i},000 --> 00:00:0{i},900\n{t}" for i, t in enumerate(cues, 1)) + "\n",
+                   encoding="utf-8")
+    out = P._repair_sound_tags(src, tmp_path, lambda m: None).read_text(encoding="utf-8")
+    for want in ("[tense musical stinger]", "-[dramatic theme music plays]\n-<i> Fire.</i>", "\n<i>Shelter in your homes!</i>\n",
+                 "Eh. Just gimme a sec.", "\nI know.\n", "\nPlease\n", "♪ Twinkle twinkle little star ♪"):
+        assert want in out, want
+    he = tmp_path / "y.he.srt"
+    he.write_text("1\n00:00:01,000 --> 00:00:02,000\nמוזיקה דרמטית\n\n2\n00:00:03,000 --> 00:00:04,000\nלמדתי מוזיקה עממית.\n",
+                  encoding="utf-8")
+    assert P._drop_untranslated(he) == 1 and "עממית" in he.read_text(encoding="utf-8")
+
 def test_interjection_screams():
     from hebsub import pipeline as P
     for t in ("Hmm.", "Aaaah!", "Ugh!", "Hyah!", "Hahaha!", "Tsk, tsk."):

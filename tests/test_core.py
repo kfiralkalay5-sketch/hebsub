@@ -93,6 +93,10 @@ def test_reflow_splits_long_single_line():
     assert E.reflow("אני לא יודע\nאיפה הוא.") == "אני לא יודע\nאיפה הוא."  # short lines keep their break
     # tags the model invents around song lyrics are made plain before the layout
     assert E.reflow('<i><i style="direction:\nrtl;">האם הטבעת אותו בים? </i></i>') == "<i>האם הטבעת אותו בים?</i>"
+    # the space just inside a tag goes outside it; a word glued to a tag gets one; a prefix stays
+    assert E.reflow("- אה, ברור, אנחנו<i> כאלה</i>.") == "- אה, ברור, אנחנו <i>כאלה</i>."
+    assert E.reflow("אני<i>מבין</i>אותך") == "אני <i>מבין</i> אותך"
+    assert E.reflow("ב<i>פריז</i> יפה") == "ב<i>פריז</i> יפה"
 
 
 

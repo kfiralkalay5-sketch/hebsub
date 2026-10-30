@@ -1149,7 +1149,13 @@ def _plain_tags(text: str) -> str:
     text = re.sub(r"<(i|b|u)\s[^<>]*>", r"<\1>", text or "")
     text = re.sub(r"(<(i|b|u)>)(?:\s*<\2>)+", r"\1", text)
     text = re.sub(r"(</(i|b|u)>)(?:\s*</\2>)+", r"\1", text)
-    return re.sub(r"(<[ibu]>) +| +(</[ibu]>)", lambda m: m.group(1) or m.group(2), text)
+    # a space just inside a tag goes outside it, not away ("אנחנו<i> כאלה</i>" had become
+    # "אנחנו<i>כאלה</i>", 75 glued words in 45 library files); a word glued to the tag gets one
+    text = re.sub(r"(<[ibu]>) +", r" \1", text)
+    text = re.sub(r" +(</[ibu]>)", r"\1 ", text)
+    text = re.sub(r"(?<=[\u05d0-\u05ea]{3})(?=<[ibu]>[\u05d0-\u05ea\"])|(?<=[,.?!])(?=<[ibu]>[\u05d0-\u05ea\"])", " ", text)
+    text = re.sub(r"(?<=[\u05d0-\u05ea.,?!\"]</[ibu]>)(?=[\u05d0-\u05ea]{2})", " ", text)
+    return "\n".join(re.sub(r" {2,}", " ", line).strip() for line in text.split("\n"))
 
 
 def reflow(text: str, max_lines: int = 2) -> str:

@@ -141,6 +141,14 @@ def test_drop_untranslated(tmp_path):
     assert P._drop_untranslated(srt, transcript=True) == 2  # a transcript: gibberish and romaji go too
     assert "FBI" in srt.read_text(encoding="utf-8")
 
+
+def test_interjection_screams():
+    from hebsub import pipeline as P
+    for t in ("Hmm.", "Aaaah!", "Ugh!", "Hyah!", "Hahaha!", "Tsk, tsk."):
+        assert P._INTERJECTION.fullmatch(t), t
+    for t in ("Wow!", "Whoa!", "Ouch!", "Hiya!", "Ha!", "Ahh, okay."):  # human Hebrew keeps these more often
+        assert not P._INTERJECTION.fullmatch(t), t
+
 def test_prepare_build_roundtrip_utf8(home, tmp_path):
     """The bundled CueIvrit tool runs as a subprocess: Hebrew must survive on every OS."""
     from hebsub.config import Config

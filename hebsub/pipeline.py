@@ -846,7 +846,10 @@ def _claim_gpu(engine: Engine, log: Log) -> bool:
     return True
 
 
-_INTERJECTION = re.compile(r"(?:(?:hm+|m+|mm+-?hm+|uh-?huh|ah+|oh+|uh+|um+|huh|er+|eh)[.!?…,\s-]*)+", re.I)
+# screams, effort and laughs too: human Hebrew keeps Aaah 4%, Ugh 2%, Hyah 5%, Hahaha 5% (1,208 aligned
+# videos); not Wow (36%), Whoa / Ouch / Argh (15%)
+_INTERJECTION = re.compile(r"(?:(?:hm+|m+|mm+-?hm+|uh-?huh|ah+|oh+|uh+|um+|huh|er+|eh|a{2,}h*|a+h{2,}|u+g+h+"
+                           r"|hy+a+h+|hi+ya+h+|g+r{2,}|ga+h+|(?:ha){2,}h?|tsk+)[.!?…,\s-]*)+", re.I)
 
 
 def _drop_interjections(srt: Path, english: dict[int, str]) -> int:

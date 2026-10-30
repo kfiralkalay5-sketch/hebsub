@@ -87,6 +87,10 @@ def test_reflow_splits_long_single_line():
     assert E.reflow(out) == out
     assert E.reflow("-מה אתה עושה פה בשעה כזאת מאוחרת בלילה, אחי?") == "-מה אתה עושה פה בשעה כזאת מאוחרת בלילה, אחי?"
     assert E.reflow("זה בסדר גמור.") == "זה בסדר גמור."
+    # two lines, one past 46 characters: cut again when the whole fits two readable lines
+    lop = E.reflow("היום נראה אותו\nעוזב את הקרמלין עם מכשיר שיגור גרעיני ככל הנראה.")
+    assert max(len(l) for l in lop.split("\n")) <= 46 and E.reflow(lop) == lop
+    assert E.reflow("אני לא יודע\nאיפה הוא.") == "אני לא יודע\nאיפה הוא."  # short lines keep their break
 
 
 

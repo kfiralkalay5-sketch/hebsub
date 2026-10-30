@@ -1157,9 +1157,12 @@ def reflow(text: str, max_lines: int = 2) -> str:
             text = "\n".join(lines)
     if len(lines) <= max_lines:
         # a single line over LINE_MAX (1.8% of cues in 40 episodes, some 56+ characters): two
-        # balanced lines. Two long lines keep the model's own break (re-cutting them split names
-        # and "סקוואד / 13" more often than it helped)
-        if len(lines) != 1 or len(lines[0]) <= LINE_MAX or lines[0].startswith("-"):
+        # balanced lines. Two lines keep the model's own break (re-cutting them split names and
+        # "סקוואד / 13" more often than it helped), unless one of them is past 46 and the whole
+        # fits two readable lines ("מעברים שנקראים "שערים"," at 57: 98 cues in the library)
+        lopsided = (len(lines) == 2 and max(len(l) for l in lines) > 46 and len(" ".join(lines)) <= 2 * LINE_MAX
+                    and not lines[0].startswith("-") and not lines[1].startswith("-"))
+        if not lopsided and (len(lines) != 1 or len(lines[0]) <= LINE_MAX or lines[0].startswith("-")):
             return text
     else:
         dash = [i for i, l in enumerate(lines) if l.lstrip().startswith("-")]
@@ -1176,6 +1179,7 @@ def reflow(text: str, max_lines: int = 2) -> str:
         score = max(len(a), len(b)) + abs(len(a) - len(b)) / 4
         score -= 10 if re.search(r"[.?!]$", a) else 7 if re.search(r"[,:;]$", a) else 0
         score += 8 if words[i - 1] in _NO_LINE_END else 0
+        score += 30 if max(len(a), len(b)) > 46 else 0  # a sentence end is not worth a line too long to read
         if best is None or score < best:
             best, cut = score, i
     return " ".join(words[:cut]) + "\n" + " ".join(words[cut:])

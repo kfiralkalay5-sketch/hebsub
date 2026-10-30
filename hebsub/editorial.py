@@ -944,6 +944,7 @@ Keep every other word exactly as it is. Return JSON {"items":[{"cue_id":<int>,"t
 with every item.
 
 """
+_TAGS = re.compile(r"<[^>]+>|\{[^}]*\}")
 _FOREIGN_FALLBACK = {"حاملة": "בהריון", "حامل": "בהריון"}
 _FOREIGN_WORD = re.compile(r"\w*[^\W\d_A-Za-z\u05d0-\u05ea\u05f0-\u05f4]\w*")
 
@@ -953,7 +954,7 @@ def _foreign_words(text: str, english: str) -> list[str]:
     letters too (kanji on a sign, an emoticon): Gemma sometimes writes a Semitic or other word inside a
     Hebrew line ("אשתי حامل", "התא корпораטיבי") and copies it again when asked to fix the line"""
     return [w for w in _FOREIGN_WORD.findall(re.sub(r"<[^>]+>|\{[^}]*\}", "", text))
-            if any(ch not in english for ch in _FOREIGN.findall(w))]
+            if any(ch not in english for ch in _FOREIGN.findall(w)) and len(w) > 1]  # one letter: an emoticon's ﾉ
 
 
 def foreign_pass(engine: Engine, records: list[dict], english: dict[int, str], log: Log) -> tuple[list[dict], int]:
@@ -992,6 +993,9 @@ def foreign_pass(engine: Engine, records: list[dict], english: dict[int, str], l
                 if again:
                     todo[cid]["not Hebrew, never write"] = sorted(set(todo[cid].get("not Hebrew, never write", []) + again))
                     continue
+                old = by_id[cid]["text"]
+                if _TAGS.findall(new) != _TAGS.findall(old) or new.count("[") != old.count("["):
+                    continue  # a broken tag ("<b{\\an8}") or the mask's brackets left in the line
                 if difflib.SequenceMatcher(None, heb(todo[cid]["hebrew"]), heb(new)).ratio() >= 0.6:
                     by_id[cid]["text"] = new
                     changed += 1

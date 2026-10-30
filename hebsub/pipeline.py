@@ -398,9 +398,10 @@ def _repair_sound_tags(src: Path, work_dir: Path, log: Log) -> Path:
     # ... or with no closing asterisk ("* tense music playing", "-* dramatic theme music plays", GRACE)
     fixed = re.sub(r"(?m)^([ \t]*-?[ \t]*(?:<i>)?)\*[ \t]*(?=[^*\n]*\b(?:music|musical|song|playing|plays)\b)([^*\n]{1,90})$",
                    r"\1♪ \2 ♪", fixed, flags=re.I)  # closed here: the dialogue on the next line is not part of it
-    fixed, n6 = re.subn(r"♪[ \t]*((?:(?!\n\s*\n)[^♪]){0,90}?\b(?:music|musical|stinger|song|melody|tune|score|humming|whistling|"
+    # (the description never runs into the next speaker's line: "- ♪ dramatic theme music plays" / "- <i>Fire.</i>")
+    fixed, n6 = re.subn(r"♪[ \t]*((?:(?!\n\s*\n|\n\s*-)[^♪]){0,90}?\b(?:music|musical|stinger|song|melody|tune|score|humming|whistling|"
                         r"fanfare|plays|playing|continues|ends|swells|fades|stops|resumes|intensifies|builds)\b"
-                        r"(?:(?!\n\s*\n)[^♪]){0,50}?)[ \t]*(?:♪|(?=\n\s*\n)|\Z)",
+                        r"(?:(?!\n\s*\n|\n\s*-)[^♪]){0,50}?)[ \t]*(?:♪|(?=\n\s*\n|\n\s*-)|\Z)",
                         lambda m: (f"[{' '.join(m.group(1).split())}]" if len(m.group(1).split()) <= 10
                                    and re.search(r"\bmusic(?:al)?\b|\bstinger\b|\b(?:plays|playing|continues|ends|swells|fades|stops|"
                                                  r"resumes|intensifies|builds)\s*$", m.group(1).strip(), re.I)

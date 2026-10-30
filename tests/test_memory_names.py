@@ -35,4 +35,6 @@ def test_final_letter_inside_a_word():
     from hebsub.editorial import fix_final_letters
     assert fix_final_letters("הסנבוןזאקורה שלו, עםכם") == "הסנבונזאקורה שלו, עמכם"
     assert fix_final_letters("חירוםםם! אם כן") == "חירוםםם! אם כן"  # a stretched word stays
+    assert fix_final_letters("אני אהיה כאן\nכש תחזרי.") == "אני אהיה כאן\nכשתחזרי."  # a detached prefix
+    assert fix_final_letters("מי שאני כשאני איתך") == "מי שאני כשאני איתך"
     assert memory.clean_hebrew_name("היוריןמרו") == "היורינמרו"

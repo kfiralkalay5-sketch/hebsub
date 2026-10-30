@@ -1529,8 +1529,10 @@ _UNFINAL = str.maketrans("ךםןףץ", "כמנפצ")
 
 def fix_final_letters(text: str) -> str:
     """A final letter inside a word is never Hebrew: סנבוןזאקורה -> סנבונזאקורה, מתוךך -> מתוכך
-    (104 cases in 414 outputs, mostly transliterated names)."""
-    return _MID_FINAL.sub(lambda m: m.group(0).translate(_UNFINAL), text)
+    (104 cases in 414 outputs, mostly transliterated names); a detached כש joins its word."""
+    text = _MID_FINAL.sub(lambda m: m.group(0).translate(_UNFINAL), text)
+    # the prefix כש is never a word of its own ("אני אהיה כאן כש תחזרי", Georgie S01E06)
+    return re.sub(r"(?<![\u05d0-\u05ea\"'״׳-])(ו?כש)\s+(?=[\u05d0-\u05ea]{2})", r"\1", text)
 
 
 def fix_name_variants(text: str, english: str, names: dict | None) -> str:

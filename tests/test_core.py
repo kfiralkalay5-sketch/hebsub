@@ -89,6 +89,46 @@ def test_reflow_splits_long_single_line():
     assert E.reflow("זה בסדר גמור.") == "זה בסדר גמור."
 
 
+
+def test_gender_change_person():
+    from hebsub import editorial as E
+    ok = E._gender_change_ok
+    # the nearest marker decides: "שאני" makes טיפשה a first-person form, not "you"
+    assert ok("את חושבת שאני טיפש?", "את חושבת שאני טיפשה?", "f", None)
+    assert not ok("את חושבת שאני טיפש?", "את חושבת שאני טיפשה?", "m", "f")
+    # צריך / צריכה is "I need", not the 2nd-person suffix of עליך / עלייך
+    assert not ok("אני צריך שתעבדו יחד.", "אני צריכה שתעבדו יחד.", "m", "f")
+    assert ok("אני סומך עליך.", "אני סומך עלייך.", "m", "f")
+    # the look-back stops at a sentence end ("אנחנו?" does not make the next sentence plural)
+    assert ok("אנחנו? חשבתי שתקחי אותה.", "אנחנו? חשבתי שתקח אותה.", None, "m")
+    assert not ok("אנחנו? חשבתי שתקחי אותה.", "אנחנו? חשבתי שתקח אותה.", None, None, "m")
+    # ... but not at an ellipsis
+    assert ok("אני... זוכרת...", "אני... זוכר...", "m", None)
+
+
+class _FillEngine:
+    """answers the foreign-word prompt with fixed Hebrew"""
+    def __init__(self, fills):
+        self.fills = fills
+
+    def complete(self, prompt, schema=None):
+        items = json.loads(prompt.rsplit("\n\n", 1)[-1])  # the items follow the instructions
+        return json.dumps({"items": [{"cue_id": i["cue_id"], "text": i["hebrew"].replace("[?]", self.fills[i["cue_id"]])}
+                                     for i in items]}, ensure_ascii=False)
+
+
+def test_foreign_pass():
+    from hebsub import editorial as E
+    assert E._foreign_words("התא корпораטיבי והמשעמם.", "the corporate cell") == ["корпораטיבי"]
+    assert E._foreign_words("<b>弐撃決殺", "<b>弐撃決殺</b>") == []  # the English has it too (a sign)
+    recs = [{"cue_id": 1, "text": "סאם, תתخلص מהמשאית!"}, {"cue_id": 2, "text": "אשתי حامل."},
+            {"cue_id": 3, "text": "שלום."}]
+    en = {1: "Sam, get away from the truck!", 2: "My wife is pregnant.", 3: "Hello."}
+    out, n = E.foreign_pass(_FillEngine({1: "תתרחק", 2: "حامل"}), recs, en, lambda m: None)
+    assert n == 2
+    assert out[0]["text"] == "סאם, תתרחק מהמשאית!"
+    assert out[1]["text"] == "אשתי בהריון."  # the model wrote Arabic again: the fallback word
+
 def test_drop_untranslated(tmp_path):
     from hebsub import pipeline as P
     srt = tmp_path / "x.he.srt"

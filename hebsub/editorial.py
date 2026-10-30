@@ -341,6 +341,11 @@ def _direction(before: str, after: str) -> str | None:
     return None
 
 
+def _sentence_ids(text: str) -> list[int]:
+    """for each _HEB word of text, how many sentence ends (. ? !, not an ellipsis) come before it"""
+    return [len(re.findall(r"(?<![.?!])[.?!](?![.?!]*\.\.)(?!\.)", text[:m.start()])) for m in _HEB.finditer(text)]
+
+
 def _gender_change_ok(before: str, after: str, i_form: str | None, you_form: str | None,
                       plural_form: str | None = None) -> bool:
     """Accept only word-for-word gender flips that agree with the audio hint.
@@ -352,6 +357,8 @@ def _gender_change_ok(before: str, after: str, i_form: str | None, you_form: str
     b, a = _HEB.findall(before), _HEB.findall(after)
     if len(b) != len(a):
         return False
+    # sentence of each word: the look-back window never crosses a . ? ! ("אנחנו? חשבתי שתקחי")
+    sb, sa = _sentence_ids(before), _sentence_ids(after)
     you_ctx = None  # position of the last accepted 2nd-person change ("תהיי אורחת": the predicate follows)
     for k, (wb, wa) in enumerate(zip(b, a)):
         if wb == wa:
@@ -359,34 +366,40 @@ def _gender_change_ok(before: str, after: str, i_form: str | None, you_form: str
         d = _direction(wb, wa)
         if d is None:
             return False
-        back = set(b[max(0, k - 3):k]) | set(a[max(0, k - 3):k])
+        lo = max(0, k - 3)
+        while lo < k and (sb[lo] != sb[k] or sa[lo] != sa[k]):
+            lo += 1
+        # the nearest person marker decides ("את חושבת שאני טיפשה": טיפשה is "I", not "you")
+        near = next(("pl" if {b[j], a[j]} & _PL_MARK else "you" if {b[j], a[j]} & _YOU_MARK else "i"
+                     for j in range(k - 1, lo - 1, -1) if {b[j], a[j]} & (_PL_MARK | _YOU_MARK | _I_MARK)), None)
         if wb == "אתן" and (k > 0 and b[k - 1] in ("אני", "לא", "ואני") or
                             (k + 1 < len(b) and b[k + 1] in ("לך", "לו", "לה", "לכם", "לזה", "לכן"))):
             return False  # "אתן" here is the verb "I will give"
-        if wb in _PL_MARK or wa in _PL_MARK or back & _PL_MARK:
+        if wb in _PL_MARK or wa in _PL_MARK or near == "pl":
             if plural_form is None or d != plural_form:
                 return False
             continue
         bare_b, bare_a = re.sub(r"^(?:וכש|כש|ו|ש)(?=ת)", "", wb), re.sub(r"^(?:וכש|כש|ו|ש)(?=ת)", "", wa)
         # "את יודעת שהוא עייף": an adjective after a third-person subject is not about "you"
-        third = any(re.sub(r"^(?:ו|ש|כש)", "", w) in ("הוא", "היא", "הם", "הן") for w in a[max(0, k - 3):k])
+        third = any(re.sub(r"^(?:ו|ש|כש)", "", w) in ("הוא", "היא", "הם", "הן") for w in a[lo:k])
         # a ת- future / imperative (שתשתמש / שתשתמשי) is 2nd person even right after "אני רוצה"
         fut_you = _fem_future_to_m(wa) == wb or _fem_future_to_m(wb) == wa
         if fut_you or wb in _YOU_MARK or wa in _YOU_MARK or (wb, wa) in _IMPER or (wa, wb) in _IMPER \
-                or (back & _YOU_MARK and not third) or (bare_b.startswith("ת") and bare_a.startswith("ת") and not back & _I_MARK) \
-                or (you_ctx is not None and you_form == d and k - you_ctx <= 3
+                or (near == "you" and not third) or (bare_b.startswith("ת") and bare_a.startswith("ת") and near != "i") \
+                or (you_ctx is not None and you_form == d and k - you_ctx <= 3 and sb[you_ctx] == sb[k]
                     and not any(re.sub(r"^(?:ו|ש|כש)", "", w) in ("הוא", "היא", "הם", "הן", "זה", "זאת", "זו")
                                 for w in a[you_ctx + 1:k])) \
-                or (wb.translate(_FINALS).endswith("יכ") and you_form is not None):
+                or (wb.translate(_FINALS).endswith("יכ") and you_form is not None
+                    and not (wa.endswith("כה") or wb.endswith("כה"))):  # צריך / צריכה is "I need", not "you"
             person, is_you = you_form, True
-        elif back & _I_MARK:
+        elif near == "i":
             person, is_you = i_form, False
         else:
             return False
         if person is None or d != person:
             return False
         if is_you:  # the pronoun before it must not be left in the other gender
-            pron = [w for w in a[max(0, k - 3):k] if w in _YOU_MARK]
+            pron = [w for w in a[lo:k] if w in _YOU_MARK]
             if pron and (pron[-1].endswith("את") and d == "m" or pron[-1].endswith("אתה") and d == "f"):
                 return False
             you_ctx = k
@@ -924,11 +937,84 @@ _LATIN = re.compile(r"[A-Za-z]{2,}")
 _FOREIGN = re.compile(r"[^\W\d_A-Za-z\u05d0-\u05ea\u05f0-\u05f4]")  # any other script (Arabic, Ethiopic...)
 
 
+FOREIGN_PROMPT = """In these Hebrew subtitle lines the translator wrote a word in another alphabet by
+mistake (Arabic, Cyrillic, Korean, Chinese...). That word is now replaced by [?]. For each item write
+the line again with every [?] replaced by the right Hebrew word or words, as the English line says.
+Keep every other word exactly as it is. Return JSON {"items":[{"cue_id":<int>,"text":"<hebrew>"}]}
+with every item.
+
+"""
+_FOREIGN_FALLBACK = {"حاملة": "בהריון", "حامل": "בהריון"}
+_FOREIGN_WORD = re.compile(r"\w*[^\W\d_A-Za-z\u05d0-\u05ea\u05f0-\u05f4]\w*")
+
+
+def _foreign_words(text: str, english: str) -> list[str]:
+    """words of text in a script that is neither Hebrew nor Latin, unless the English line has those
+    letters too (kanji on a sign, an emoticon): Gemma sometimes writes a Semitic or other word inside a
+    Hebrew line ("אשתי حامل", "התא корпораטיבי") and copies it again when asked to fix the line"""
+    return [w for w in _FOREIGN_WORD.findall(re.sub(r"<[^>]+>|\{[^}]*\}", "", text))
+            if any(ch not in english for ch in _FOREIGN.findall(w))]
+
+
+def foreign_pass(engine: Engine, records: list[dict], english: dict[int, str], log: Log) -> tuple[list[dict], int]:
+    """Replace words written in a foreign alphabet: the word is masked as [?] (shown, the model
+    keeps it) and the model fills in the Hebrew from the English line."""
+    todo = {}
+    for r in records:
+        bad = _foreign_words(r.get("text") or "", english.get(r["cue_id"], ""))
+        if bad:
+            masked = r["text"]
+            for w in sorted(set(bad), key=len, reverse=True):
+                masked = masked.replace(w, "[?]")
+            todo[r["cue_id"]] = {"cue_id": r["cue_id"], "english": english.get(r["cue_id"], ""), "hebrew": masked}
+    if not todo:
+        return records, 0
+    schema = {"type": "object", "required": ["items"], "properties": {"items": {"type": "array", "items": {
+        "type": "object", "required": ["cue_id", "text"],
+        "properties": {"cue_id": {"type": "integer"}, "text": {"type": "string"}}}}}}
+    from .engines import _extract_json
+    by_id, changed, n_todo = {r["cue_id"]: r for r in records}, 0, len(todo)
+    heb = lambda t: re.sub(r"[^א-ת ]", "", t.replace("[?]", " "))
+    for _ in range(2):  # the second round names the foreign words the model wrote again ("حامل" for "pregnant")
+        items = list(todo.values())
+        for s in range(0, len(items), 8):
+            try:
+                data = _extract_json(engine.complete(FOREIGN_PROMPT + json.dumps(items[s:s + 8], ensure_ascii=False, indent=1),
+                                                     schema=schema))
+            except EngineError as exc:
+                log(f"foreign: chunk failed ({exc})")
+                continue
+            for x in (data.get("items", []) if isinstance(data, dict) else []):
+                cid, new = x.get("cue_id"), x.get("text")
+                if cid not in todo or not isinstance(new, str) or "[?]" in new:
+                    continue
+                again = _foreign_words(new, english.get(cid, ""))
+                if again:
+                    todo[cid]["not Hebrew, never write"] = sorted(set(todo[cid].get("not Hebrew, never write", []) + again))
+                    continue
+                if difflib.SequenceMatcher(None, heb(todo[cid]["hebrew"]), heb(new)).ratio() >= 0.6:
+                    by_id[cid]["text"] = new
+                    changed += 1
+                    del todo[cid]
+        if not todo:
+            break
+    for cid in list(todo):  # words Gemma writes in Arabic whatever the prompt (2 of 381 library files)
+        new = by_id[cid]["text"]
+        for w, he in _FOREIGN_FALLBACK.items():
+            new = new.replace(w, he)
+        if new != by_id[cid]["text"] and not _foreign_words(new, english.get(cid, "")):
+            by_id[cid]["text"] = new
+            changed += 1
+    log(f"foreign: {n_todo} line(s) with a word in another alphabet, {changed} fixed")
+    return records, changed
+
+
 def leftover_pass(engine: Engine, records: list[dict], english: dict[int, str], log: Log,
                   names: dict | None = None, rounds: int = 2) -> tuple[list[dict], int]:
     """Re-translate English left inside Hebrew lines (and mixed-script broken words);
-    a second round retries what the first left (the model fixes most, not all, at once)."""
-    total = 0
+    a second round retries what the first left (the model fixes most, not all, at once).
+    Words in another alphabet go first through foreign_pass."""
+    records, total = foreign_pass(engine, records, english, log)
     for _ in range(rounds):
         records, n = _leftover_round(engine, records, english, log, names)
         total += n

@@ -1089,6 +1089,7 @@ def hebrew_names(engine: Engine, bible: dict, english_text: str, log: Log) -> di
     """One spelling per name for the whole episode: bible characters + capitalised words that
     recur in the subtitles (names the bible missed)."""
     from .engines import _extract_json
+    from .memory import bad_title
     cands = set()
     for c in bible.get("characters", []):
         for n in [c.get("name", "")] + list(c.get("aliases", [])):
@@ -1120,7 +1121,8 @@ def hebrew_names(engine: Engine, bible: dict, english_text: str, log: Log) -> di
             continue
         for x in (data.get("names", []) if isinstance(data, dict) else []):
             en, he = str(x.get("en", "")).strip(), str(x.get("he", "")).strip()
-            if en in cands and he and re.search("[\u05d0-\u05ea]", he) and not re.search("[A-Za-z]", he):
+            if en in cands and he and re.search("[\u05d0-\u05ea]", he) and not re.search("[A-Za-z]", he) \
+                    and not bad_title(en, he):  # האנטר סונג: the translator renders the title
                 out[en] = he
     # a pet-name ending (Georgie, Connie) is a final \u05d9; without it the model gave Georgie
     # the spelling of his father George

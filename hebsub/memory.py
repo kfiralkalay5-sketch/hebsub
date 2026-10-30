@@ -21,6 +21,35 @@ RANK = {"unresolved": 0, "low": 1, "medium": 2, "high": 3}
 # Bare titles are never treated as an alias of a longer name.
 TITLES = {"sir", "general", "dr", "doctor", "mr", "mrs", "ms", "miss", "captain",
           "lord", "lady", "king", "queen", "professor", "father", "mother", "kid"}
+# A rank or title before a name (Hunter Sung, Chairman Go, King) and its Hebrew, with or without
+# ה. The names step transliterated some titles (האנטר סונג, קינג, צ'יף וו) or lost one to a raw
+# quote (Chairman Go -> יו), and terms_pass then forced that on every line (Solo Leveling, 160
+# lines). Such an entry stays out of the name table and the votes, so the translator renders the
+# title itself, in the person's gender; a translated one (Coach Chilton = המאמנת צ'ילטון) stays.
+RANK_TITLES = {
+    "hunter": "צייד ציידת", "chairman": "יו\"ר יו״ר יושב יושבת", "chairwoman": "יו\"ר יו״ר יושבת",
+    "chief": "ראש מפקד מפקדת מפקח מפקחת נגד", "president": "נשיא נשיאה", "director": "מנהל מנהלת במאי במאית",
+    "commander": "מפקד מפקדת", "general": "גנרל גנרלית", "colonel": "קולונל", "major": "מייג'ור",
+    "admiral": "אדמירל", "marshal": "מרשל", "king": "מלך", "queen": "מלכה", "prince": "נסיך",
+    "princess": "נסיכה", "emperor": "קיסר", "empress": "קיסרית", "lord": "לורד אדון", "lady": "ליידי גברת",
+    "duke": "דוכס", "duchess": "דוכסית", "sir": "סר", "master": "מאסטר אדון", "judge": "שופט שופטת",
+    "coach": "מאמן מאמנת", "principal": "מנהל מנהלת", "professor": "פרופסור פרופ'",
+    "senator": "סנטור סנטורית סנאטור סנאטורית", "governor": "מושל מושלת", "mayor": "ראש", "sheriff": "שריף",
+    "deputy": "סגן סגנית", "chancellor": "קנצלר קנצלרית", "minister": "שר שרה",
+    "inspector": "מפקח מפקחת פקח", "officer": "שוטר שוטרת קצין קצינה סמל נגד סוכן סוכנת", "sergeant": "סמל סמלת סרג'נט",
+    "detective": "בלש בלשית", "captain": "קפטן סרן", "lieutenant": "סגן סגנית סרן", "agent": "סוכן סוכנת",
+    "nurse": "אחות אח", "doctor": "ד\"ר ד״ר דוקטור רופא רופאה", "uncle": "דוד", "aunt": "דודה",
+    "auntie": "דודה", "grandma": "סבתא", "granny": "סבתא", "grandpa": "סבא",
+}
+
+
+def bad_title(en: str, he: str) -> bool:
+    """'Hunter Sung' = 'האנטר סונג': the title was transliterated, not translated."""
+    words, hw = (en or "").split(), (he or "").split()
+    if not words or words[0].rstrip(".").lower() not in RANK_TITLES:
+        return False
+    ok = RANK_TITLES[words[0].rstrip(".").lower()].split()
+    return not hw or (hw[0] not in ok and re.sub(r"^ה", "", hw[0]) not in ok)
 
 
 _SEASON = re.compile(r"^(season|series|s)[\s._-]*\d+|^specials?$|^עונה", re.I)
@@ -162,7 +191,7 @@ def settled_names(mem: dict) -> dict[str, str]:
     out = {}
     for en, votes in (mem.get("names_he") or {}).items():
         ranked = sorted(votes.items(), key=lambda kv: -kv[1])
-        if ranked and (len(ranked) == 1 or ranked[0][1] > ranked[1][1]):
+        if ranked and (len(ranked) == 1 or ranked[0][1] > ranked[1][1]) and not bad_title(en, ranked[0][0]):
             out[en] = ranked[0][0]
     for en, he in list(out.items()):
         en_parts, he_parts = re.split(r"[ -]", en), re.split(r"([ -])", he)
@@ -181,7 +210,7 @@ def vote_names(mem: dict, names: dict[str, str], episode: str) -> bool:
     table = mem.setdefault("names_he", {})
     for en, he in names.items():
         he = clean_hebrew_name(he)
-        if he:
+        if he and not bad_title(en, he):
             votes = table.setdefault(en, {})
             votes[he] = votes.get(he, 0) + 1
     done.append(episode)

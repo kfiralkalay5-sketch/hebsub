@@ -879,6 +879,84 @@ def _realign_shifts(cfg, engine: Engine, recs: list[dict], src: dict[int, str], 
     return recs, fixed
 
 
+def _retranslate_clusters(cfg, engine: Engine, recs: list[dict], src: dict[int, str], work_dir: Path,
+                          bible: dict, sdh_mode: str, log: Log) -> tuple[list[dict], int]:
+    """Hebrew that moved two or three cues, or was repeated on a neighbouring cue (Solo Leveling
+    S01E01 157-167: a long line split over two cues, a repeat, then a lag of 2; S02E06 106-118: a lag
+    of 2 to the batch end). _realign_shifts only moves runs that lag by one. The same LaBSE check
+    (scan_cli clusters) finds them; those cues and one more on each side are translated again, 8 at a
+    time, where the model keeps the ids. Kept only if the similarity rises (see the rule below)."""
+    py, script = cfg.get("align.python"), cfg.get("align.script")
+    if not py or not script or not Path(py).is_file() or not Path(script).is_file():
+        return recs, 0
+    by = {r["cue_id"]: r for r in recs}
+    ids = [r["cue_id"] for r in recs if (r.get("text") or "").strip() and (src.get(r["cue_id"]) or "").strip()]
+    if len(ids) < 10:
+        return recs, 0
+
+    def check(texts):
+        q = {"en": [src[i] for i in ids], "he": texts, "clusters": True}
+        out = subprocess.run([py, script], input=json.dumps(q, ensure_ascii=False), capture_output=True,
+                             text=True, timeout=300)
+        return json.loads(out.stdout)
+    old = [by[i]["text"] for i in ids]
+    try:
+        res = check(old)
+    except Exception as exc:  # noqa: BLE001 - the check is optional
+        log(f"align: cluster check skipped ({str(exc)[:120]})")
+        return recs, 0
+    if not res.get("clusters"):
+        return recs, 0
+    batches = {}
+    for bf in sorted((work_dir / "batches").glob("batch_*.json")):
+        b = json.loads(bf.read_text(encoding="utf-8-sig"))
+        for it in b.get("items", []):
+            batches[it["cue_id"]] = (b, it)
+    new, spans = list(old), []
+    for k, j in res["clusters"]:
+        a, z = max(0, k - 1), min(len(ids) - 1, j + 1)
+        items = [batches[ids[p]][1] for p in range(a, z + 1) if ids[p] in batches]
+        if len(items) != z - a + 1:
+            continue
+        got = {}
+        for s0 in range(0, len(items), 8):
+            part = items[s0:s0 + 8]
+            try:
+                got.update({r["cue_id"]: r["text"] for r in _translate_one_batch(
+                    engine, dict(batches[part[0]["cue_id"]][0], items=part), bible, sdh_mode, log, attempts=2)
+                    if (r.get("text") or "").strip()})
+            except (EngineError, PipelineError):
+                got = {}
+                break
+        if all(got.get(ids[p]) for p in range(a, z + 1)):
+            new[a:z + 1] = [got[ids[p]] for p in range(a, z + 1)]
+            spans.append((a, z))
+    if not spans:
+        return recs, 0
+    try:
+        after = check(new)
+    except Exception as exc:  # noqa: BLE001
+        log(f"align: cluster re-check failed ({str(exc)[:120]}), keeping the translation as it was")
+        return recs, 0
+    fixed = 0
+    for a, z in spans:
+        before = sum(res["sim"][a:z + 1]) / (z - a + 1)
+        now = sum(after["sim"][a:z + 1]) / (z - a + 1)
+        still = any(c[0] <= z and c[1] >= a for c in after.get("clusters", []))
+        # a clean re-check with some gain (a repeat removed: 0.80 -> 0.89), or a large gain even when
+        # a neighbouring pair still looks alike (Solo S01E01 165-175: 0.77 -> 0.93)
+        if (not still and now >= before + 0.05 and now >= 0.7) or (now >= before + 0.1 and now >= 0.85):
+            for p in range(a, z + 1):
+                if by[ids[p]]["text"] != new[p]:
+                    by[ids[p]]["text"] = new[p]
+                    fixed += 1
+            log(f"align: cues {ids[a]}-{ids[z]} had moved or repeated, translated again (similarity {before:.2f} -> {now:.2f})")
+        else:
+            log(f"align: cues {ids[a]}-{ids[z]} look moved, a new translation was not better "
+                f"({before:.2f} -> {now:.2f}{', still flagged' if still else ''}); kept as it was")
+    return recs, fixed
+
+
 def translate_checked(engine: Engine, batch: dict, bible: dict, sdh_mode: str, log: Log) -> list[dict]:
     """_translate_one_batch, re-done in halves when the result looks slid."""
     records = _translate_one_batch(engine, batch, bible, sdh_mode, log)
@@ -1024,6 +1102,7 @@ def finish_translation(cfg, engine: Engine, video: Path, english: Path, work_dir
         man = json.loads(manifest_path.read_text(encoding="utf-8-sig"))
         src0 = {c["index"]: c.get("clean_text") or c.get("source_text", "") for c in man["cues"]}
         recs, _ = _realign_shifts(cfg, engine, recs, src0, work_dir, bible, sdh_mode, log)
+        recs, _ = _retranslate_clusters(cfg, engine, recs, src0, work_dir, bible, sdh_mode, log)
         recs, _ = editorial.leftover_pass(engine, recs, src0, log, names=bible.get("names_he"))
         recs, _ = editorial.truncation_pass(engine, recs, src0, log, names=bible.get("names_he"))
         recs, _ = editorial.terms_pass(engine, recs, src0, bible.get("names_he"), log)

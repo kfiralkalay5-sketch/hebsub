@@ -206,6 +206,15 @@ if q.get("en"):
         else:
             k += 1
     out.update(runs=runs, sim=s0)
+    if q.get("clusters"):  # every cue not carrying its own Hebrew, grouped (gap <= 2), 2+ cues
+        bad, cl = [k for k in range(len(en)) if s0[k] < 1.0], []
+        while bad:
+            grp = [bad.pop(0)]
+            while bad and bad[0] - grp[-1] <= 2:
+                grp.append(bad.pop(0))
+            if len(grp) >= 2:
+                cl.append([grp[0], grp[-1]])
+        out["clusters"] = cl
 if q.get("pairs"):
     out["pair_sim"] = [sim(e, h) if not e.startswith("HE:") else (1.0 if e == h else 0.2) for e, h in q["pairs"]]
 print(json.dumps(out))
@@ -235,6 +244,39 @@ def test_realign_shifts(tmp_path):
     out, n = P._realign_shifts(cfg, _EchoEngine(), recs, en, tmp_path, {}, "remove", lambda m: None)
     assert [r["text"] for r in out] == ["HE:" + en[i] for i in en]
     assert n == 5
+
+def test_retranslate_clusters(tmp_path):
+    """Hebrew two cues late (Solo Leveling S01E01): the cues are translated again in a small batch."""
+    from hebsub import pipeline as P
+    en = {i: f"line {i}" for i in range(1, 13)}
+    he = {i: "HE:" + en[i] for i in en}
+    for i in range(5, 9):  # cues 5-8 carry the Hebrew of 3-6
+        he[i] = "HE:" + en[i - 2]
+    recs = [{"cue_id": i, "text": he[i]} for i in en]
+    (tmp_path / "batches").mkdir()
+    (tmp_path / "batches" / "batch_0001.json").write_text(json.dumps({"batch_number": 1, "items": [
+        {"cue_id": i, "source": en[i], "translate": True} for i in en]}), encoding="utf-8")
+    script = tmp_path / "align.py"
+    script.write_text(_FAKE_ALIGN, encoding="utf-8")
+    cfg = type("C", (), {"get": lambda self, k, d=None: {"align.python": sys.executable, "align.script": str(script)}.get(k, d)})()
+    out, n = P._retranslate_clusters(cfg, _EchoEngine(), recs, en, tmp_path, {}, "remove", lambda m: None)
+    assert [r["text"] for r in out] == ["HE:" + en[i] for i in en]
+    assert n == 4
+
+
+def test_bad_title_names():
+    """A transliterated title (Hunter Sung = האנטר סונג) never enters the name table or the votes;
+    a translated one (Coach Chilton = המאמנת צ'ילטון) does."""
+    from hebsub import memory as M
+    assert M.bad_title("Hunter Sung", "האנטר סונג") and M.bad_title("Chairman Go", "יו")
+    assert M.bad_title("King", "קינג") and M.bad_title("Chief Woo", "צ'יף וו")
+    assert not M.bad_title("Coach Chilton", "המאמנת צ'ילטון") and not M.bad_title("Hunter Cha", "הציידת צ'ה")
+    assert not M.bad_title("Chairman Go", "היו״ר גו") and not M.bad_title("Jinwoo", "ג'ינוו")
+    mem = {"names_he": {"Hunter Sung": {"האנטר סונג": 3}, "Sung": {"סונג": 3}}}
+    assert M.settled_names(mem) == {"Sung": "סונג"}
+    M.vote_names(mem, {"Hunter Cha": "האנטר צ'ה", "Cha": "צ'ה"}, "ep2")
+    assert "Hunter Cha" not in mem["names_he"] and mem["names_he"]["Cha"] == {"צ'ה": 1}
+
 
 def test_prepare_build_roundtrip_utf8(home, tmp_path):
     """The bundled CueIvrit tool runs as a subprocess: Hebrew must survive on every OS."""

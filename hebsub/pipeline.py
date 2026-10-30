@@ -794,7 +794,7 @@ def _realign_shifts(cfg, engine: Engine, recs: list[dict], src: dict[int, str], 
         q = {"en": [src[i] for i in ids], "he": texts} if texts else {}
         q["pairs"] = pairs or []
         out = subprocess.run([py, script], input=json.dumps(q, ensure_ascii=False), capture_output=True,
-                             text=True, timeout=900)
+                             text=True, timeout=300)
         return json.loads(out.stdout)
     old = [by[i]["text"] for i in ids]
     try:
@@ -856,7 +856,7 @@ def _realign_shifts(cfg, engine: Engine, recs: list[dict], src: dict[int, str], 
     for a, z in spans:
         before = sum(res["sim"][a:z + 1]) / (z - a + 1)
         now = sum(after["sim"][a:z + 1]) / (z - a + 1)
-        if now >= before + 0.1:
+        if now >= before + 0.1 and now >= 0.85:  # a partial repair (0.66 -> 0.78) stays as it was
             for p in range(a, z + 1):
                 if by[ids[p]]["text"] != new[p]:
                     by[ids[p]]["text"] = new[p]

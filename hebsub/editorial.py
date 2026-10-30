@@ -624,14 +624,17 @@ def veto_speakers(records: list[dict], english: dict[int, str], voices: dict, vo
 
 def veto_listeners(records: list[dict], english: dict[int, str], addr_p: dict, listeners: dict,
                    below: float = 0.3, voices: dict | None = None, fem_above: float = 0.6,
-                   voice_p: dict | None = None, mirror_below: float = 0.7, mirror_voice: float = 0.7) -> int:
+                   voice_p: dict | None = None, mirror_below: float = 0.4, mirror_voice: float = 0.7) -> int:
     """Masculine "you" where the translator chose feminine but the addressee classifier says
     p(woman) < 0.3: right 11/12 on 7 held-out episodes (Gemma writes "את" for men about
     2.6x as often as the reverse, mostly when a woman is speaking). Adds to listeners.
 
     The mirror case - a clearly female voice speaking, our "you" feminine, the classifier
     under 0.7 - is wrong 9/10 times against the human Hebrew of 13 videos
-    (bench/gender_auto/sim_addr.py): the model copies the speaker's gender to the listener."""
+    (bench/gender_auto/sim_addr.py): the model copies the speaker's gender to the listener.
+    But on the library (30 Oct, 90 changes checked with the wider context) a classifier at 0.4-0.7
+    was right only 9 times in 21 (women talking to women: Mandy to Audrey), so the mirror case
+    stops at 0.4 (under 0.4: 54 right, 10 wrong)."""
     n = 0
     for r in records:
         cid = r["cue_id"]

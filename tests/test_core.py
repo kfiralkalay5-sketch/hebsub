@@ -363,3 +363,14 @@ def test_feminine_you_labels():
     assert label("זוז.").get("you") == "m"
     for t in ("קח את זה, את לא צריכה", "אני לא אראה שוב את לסטר או את מיקה", "ראיתי את מכונת הכביסה"):
         assert label(t).get("you") is None, t  # mixed genders / the object marker
+
+
+def test_mixed_you_participles():
+    """A feminine participle left after אתה is brought into agreement from the word list
+    ("שאתה מפיקה", Georgie S01E06); one outside the list sends the line to the model."""
+    from hebsub import editorial as E
+    r = [{"text": "שאתה מפיקה\nמזה תמורה לכסף."}]
+    E.fix_mixed_you(r)
+    assert r[0]["text"] == "שאתה מפיק\nמזה תמורה לכסף."
+    assert E._half_converted("אתה מאכילה אותה מספיק?", "m") and E._half_converted("אז אתה פשוט משאירה", "m")
+    assert not E._half_converted("אתה מנסה", "m") and not E._half_converted("אתה לא מקנא", "m")

@@ -1141,10 +1141,20 @@ monday tuesday wednesday thursday friday saturday sunday january february march 
 august september october november december english american""".split())
 
 
+def _plain_tags(text: str) -> str:
+    """<i style="direction: rtl;"> (the model styling song lyrics, Avatar S01E11) -> <i>; the
+    doubled <i><i> ... </i></i> it leaves -> one pair; no space just inside a tag"""
+    text = re.sub(r"<(i|b|u)\s[^<>]*>", r"<\1>", text or "")
+    text = re.sub(r"(<(i|b|u)>)(?:\s*<\2>)+", r"\1", text)
+    text = re.sub(r"(</(i|b|u)>)(?:\s*</\2>)+", r"\1", text)
+    return re.sub(r"(<[ibu]>) +| +(</[ibu]>)", lambda m: m.group(1) or m.group(2), text)
+
+
 def reflow(text: str, max_lines: int = 2) -> str:
     """Join a 3+ line cue, or split a single line over LINE_MAX, into two balanced lines
     (dialogue dashes keep their own line); a lone prefix letter left at a line end (ש / ל / ב)
     is joined to the next word."""
+    text = _plain_tags(text)
     # לא אחרי גרש: ה-ה' של "חבר'ה" אינה אות שימוש ("החבר'ה האלה" הודבק ל"החבר'ההאלה", Avatar S01E08)
     text = re.sub(r"(?<![א-ת'׳\"״])([ושבלמכה])\s*\n\s*(?=[א-ת])", r"\n\1", text or "")
     text = re.sub(r"(?<![א-ת'׳\"״])([ושבלמכה]) (?=[א-ת])", r"\1", text)
@@ -1531,6 +1541,7 @@ def fix_name_variants(text: str, english: str, names: dict | None) -> str:
 
 
 def human_habits(text: str, english: str) -> str:
+    text = _plain_tags(text)
     out = []
     en_lines = [l for l in (english or "").split("\n")]
     for i, line in enumerate((text or "").split("\n")):

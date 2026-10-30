@@ -91,6 +91,8 @@ def test_reflow_splits_long_single_line():
     lop = E.reflow("היום נראה אותו\nעוזב את הקרמלין עם מכשיר שיגור גרעיני ככל הנראה.")
     assert max(len(l) for l in lop.split("\n")) <= 46 and E.reflow(lop) == lop
     assert E.reflow("אני לא יודע\nאיפה הוא.") == "אני לא יודע\nאיפה הוא."  # short lines keep their break
+    # tags the model invents around song lyrics are made plain before the layout
+    assert E.reflow('<i><i style="direction:\nrtl;">האם הטבעת אותו בים? </i></i>') == "<i>האם הטבעת אותו בים?</i>"
 
 
 

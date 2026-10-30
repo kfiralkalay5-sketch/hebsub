@@ -142,6 +142,16 @@ def test_drop_untranslated(tmp_path):
     assert "FBI" in srt.read_text(encoding="utf-8")
 
 
+
+def test_transcript_asterisks(tmp_path):
+    from hebsub import editorial as E, pipeline as P
+    assert E.human_habits("אמרתי *אם*.", "") == "אמרתי אם."
+    assert E.human_habits("*אנחה*", "") == "*אנחה*"  # a whole-cue sound description: dropped at build
+    srt = tmp_path / "x.he.srt"
+    srt.write_text("1\n00:00:01,000 --> 00:00:02,000\n*אנחה*\n\n2\n00:00:03,000 --> 00:00:04,000\nשלום.\n",
+                   encoding="utf-8")
+    assert P._drop_untranslated(srt) == 1 and "שלום" in srt.read_text(encoding="utf-8")
+
 def test_interjection_screams():
     from hebsub import pipeline as P
     for t in ("Hmm.", "Aaaah!", "Ugh!", "Hyah!", "Hahaha!", "Tsk, tsk."):

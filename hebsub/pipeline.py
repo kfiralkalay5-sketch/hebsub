@@ -964,7 +964,7 @@ def _drop_interjections(srt: Path, english: dict[int, str]) -> int:
 
 def _drop_untranslated(srt: Path, transcript: bool = False) -> int:
     """Remove cues with nothing for a Hebrew reader: a whole-cue sound tag ("(מקהלה שרה)",
-    "[בערבית]"; not a top / bold sign like Bleach's "{\\an8}[ לוטוס לבנה ]"), and, with no Hebrew letter, only symbols ("¶¶", "* *"), an ASS drawing
+    "[בערבית]", "*אנחה*"; not a top / bold sign like Bleach's "{\\an8}[ לוטוס לבנה ]"), and, with no Hebrew letter, only symbols ("¶¶", "* *"), an ASS drawing
     ("m 0 0 l 561 4 ...") or an IRC / web credit. When the English is a Whisper or OCR
     transcript, also untranslatable gibberish ("Ithnmc.enre.", "usc разг Gearablığım"): no
     Hebrew but lowercase Latin or another script (acronyms and numbers stay). Not for real
@@ -980,6 +980,7 @@ def _drop_untranslated(srt: Path, transcript: bool = False) -> int:
             or (transcript and re.search(r"[a-z]|[^\W\d_A-Za-z]", t)))
         # a bracketed cue placed at the top or in bold is an on-screen sign / attack name, not SDH
         tag = re.fullmatch(r"[(\[][^)\]]*[)\]]", t) and not re.search(r"\{\\an\d|<b>", b)
+        tag = tag or re.fullmatch(r"\*[^*]+\*", t)  # "*נשימות כבדות*" (a transcript's sound description)
         if "-->" in (lines[1] if len(lines) > 1 else "") and (bare or tag):
             dropped += 1
             continue

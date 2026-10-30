@@ -1547,6 +1547,10 @@ def human_habits(text: str, english: str) -> str:
         if re.match(r"\s*(?:-\s*)?(?:<i>)?(?:oh|ah|uh|um|hmm|er|mm)\b[,.…]+\s*(?!no\b|god\b|my\b|man\b|yeah\b|wow\b)\S",
                     en, re.I):
             line = re.sub(r"^(\s*(?:-\s*)?(?:<i>)?)(?:אה+|אהה|הממ+|אממ+|או)[,.…]+\s+(?=\S)", r"\1", line)
+        # emphasis asterisks of a transcript ("I said *if*") are not used in Hebrew subtitles; a
+        # whole-line "*אנחה*" is a sound description and stays for _drop_untranslated to remove
+        if not re.fullmatch(r"\s*(?:-\s*)?\*[^*]+\*\s*", line):
+            line = re.sub(r"\*([^*\n]{1,30}?[א-ת][^*\n]{0,30}?)\*", r"\1", line)
         # the model glues the word after חבר'ה onto it (חבר'ההאלה, חבר'השלנו)
         line = re.sub(r"(חבר['׳]ה)(?=[א-ת])", r"\1 ", line)
         # bookish words professional subtitles rarely use (rates vs 380k human lines: 2-3x ours)

@@ -404,3 +404,15 @@ def test_junk_tags():
     assert _plain_tags("<b\nעכשיו, בבקשה</b>") == "<b>עכשיו, בבקשה</b>"
     assert _plain_tags('עם <i\nclass="abilities">יכולות</i>') == "עם <i>יכולות</i>"
     assert _plain_tags("<bבטח.</b>") == "<b>בטח.</b>" and _plain_tags("<i>שיר\n</i>") == "<i>שיר</i>"
+
+
+def test_idiom_terms():
+    """Idioms the model rendered word for word get their Hebrew in the prompt; one speaker is
+    never told "בואו נודה" (the old entry did that for "if I'm being honest")."""
+    from hebsub.glossary import terms_for
+    assert any("אם להיות כנה" in t and "בואו נודה על" not in t for t in terms_for("If I'm being honest, no."))
+    assert any("בואו נודה" in t for t in terms_for("If we're being honest, it's bad."))
+    assert any("עדיף" in t for t in terms_for("You might as well sit."))
+    assert any("לבריאות" in t for t in terms_for("Bless you. Here's a tissue."))
+    assert not terms_for("God bless you, Dr. Murphy, for your help")
+    assert any("גן" in t for t in terms_for("She starts preschool on Monday."))

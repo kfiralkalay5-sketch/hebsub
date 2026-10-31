@@ -1157,10 +1157,34 @@ monday tuesday wednesday thursday friday saturday sunday january february march 
 august september october november december english american""".split())
 
 
+def _junk_tags(text: str) -> str:
+    """Tag debris the model writes that players show as text (31 Oct, ~120 cues in ~60 library
+    files): "<n>" / "<br>" for a line break, a closing tag without its ">" ("<i</i>", "<b" at
+    the end of a line), "<b{\\an8}>" for "{\\an8}<b>", a stray "<" glued to a Hebrew word."""
+    text = re.sub(r"<([ibu])\s+[a-z-]+=[^<>]*>", r"<\1>", text or "")      # <i\nclass="..."> across a line
+    text = re.sub(r"<([ibu])\s+(?=[\u05d0-\u05ea])", r"<\1>", text)          # <i שלי...</i>
+    text = re.sub(r"\s*(?:<n>|<n(?=[\u05d0-\u05ea])|<br\s*/?>)\s*", "\n", text, flags=re.I)
+    text = re.sub(r"<([ibu])</\1>", r"</\1>", text)
+    text = re.sub(r"<([ibu])(?:\.{2,}|=)>?", r"<\1>", text)             # <b...> / <b="...
+    text = re.sub(r"</([ibu])(?![>\w])", r"</\1>", text)                  # </i at a line end
+    text = re.sub(r"<([ibu])>[ \t]*<\1[ \t]*(?=\n|$)", r"<\1>", text)    # <b><b then a line break
+    text = re.sub(r"\n[ \t]*(</[ibu]>)", r"\1\n", text)                  # a closing tag opening a line
+    text = re.sub(r"<([ibu])(\{\\an\d\})>", r"\2<\1>", text)
+    text = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", "", text)              # control characters (<b\x08>)
+    text = re.sub(r"<([ibu])(?=[\u05d0-\u05ea\"'])", r"<\1>", text)        # <bבטח / <b"הרמון"
+    # "<b" ending a line: the closing tag when the cue opened one before it, an opening tag
+    # (moved to the next line) when a closing one follows, otherwise debris
+    text = re.sub(r"<([ibu])[ \t]*(?=\n|$)",
+                  lambda m: f"</{m.group(1)}>" if f"<{m.group(1)}>" in m.string[:m.start()]
+                  else f"<{m.group(1)}>" if f"</{m.group(1)}>" in m.string[m.end():] else "", text)
+    text = re.sub(r"<([ibu])>[ \t]*\n", r"\n<\1>", text)                # an opening tag ending a line
+    return re.sub(r"(?<=[\u05d0-\u05ea])<(?=[\u05d0-\u05ea])|(?<![\w>])<(?=[\u05d0-\u05ea])", " ", text)
+
+
 def _plain_tags(text: str) -> str:
     """<i style="direction: rtl;"> (the model styling song lyrics, Avatar S01E11) -> <i>; the
     doubled <i><i> ... </i></i> it leaves -> one pair; no space just inside a tag"""
-    text = re.sub(r"<(i|b|u)\s[^<>]*>", r"<\1>", text or "")
+    text = re.sub(r"<(i|b|u)\s[^<>]*>", r"<\1>", _junk_tags(text or ""))
     text = re.sub(r"(<(i|b|u)>)(?:\s*<\2>)+", r"\1", text)
     text = re.sub(r"(</(i|b|u)>)(?:\s*</\2>)+", r"\1", text)
     # a space just inside a tag goes outside it, not away ("אנחנו<i> כאלה</i>" had become
@@ -1169,7 +1193,8 @@ def _plain_tags(text: str) -> str:
     text = re.sub(r" +(</[ibu]>)", r"\1 ", text)
     text = re.sub(r"(?<=[\u05d0-\u05ea]{3})(?=<[ibu]>[\u05d0-\u05ea\"])|(?<=[,.?!])(?=<[ibu]>[\u05d0-\u05ea\"])", " ", text)
     text = re.sub(r"(?<=[\u05d0-\u05ea.,?!\"]</[ibu]>)(?=[\u05d0-\u05ea]{2})", " ", text)
-    return "\n".join(re.sub(r" {2,}", " ", line).strip() for line in text.split("\n"))
+    # no empty line inside a cue (it would end the cue in the SRT)
+    return "\n".join(x for x in (re.sub(r" {2,}", " ", line).strip() for line in text.split("\n")) if x)
 
 
 def reflow(text: str, max_lines: int = 2) -> str:

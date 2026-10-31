@@ -374,3 +374,16 @@ def test_mixed_you_participles():
     assert r[0]["text"] == "שאתה מפיק\nמזה תמורה לכסף."
     assert E._half_converted("אתה מאכילה אותה מספיק?", "m") and E._half_converted("אז אתה פשוט משאירה", "m")
     assert not E._half_converted("אתה מנסה", "m") and not E._half_converted("אתה לא מקנא", "m")
+
+
+def test_junk_tags():
+    """Tag debris players show as text: <n> for a line break, a closing tag without '>'."""
+    from hebsub.editorial import _plain_tags
+    assert _plain_tags("זה לא הוגן<n>להיות כועס") == "זה לא הוגן\nלהיות כועס"
+    assert _plain_tags("<i>אל תעשי!<i</i>") == "<i>אל תעשי!</i>"
+    assert _plain_tags("<b>זה שנכשלת\nבהגנה על משהו?<b") == "<b>זה שנכשלת\nבהגנה על משהו?</b>"
+    assert _plain_tags("לא טובה<בקשרים") == "לא טובה בקשרים"
+    assert _plain_tags("<i>תקין</i>") == "<i>תקין</i>"
+    assert _plain_tags("<b\nעכשיו, בבקשה</b>") == "<b>עכשיו, בבקשה</b>"
+    assert _plain_tags('עם <i\nclass="abilities">יכולות</i>') == "עם <i>יכולות</i>"
+    assert _plain_tags("<bבטח.</b>") == "<b>בטח.</b>" and _plain_tags("<i>שיר\n</i>") == "<i>שיר</i>"

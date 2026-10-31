@@ -240,6 +240,9 @@ def _fansub_credit(body_lines: list[str]) -> str | None:
     text = " ".join(ls)
     if _IRC.search(text) or _ASS_DRAW.fullmatch(text) or re.fullmatch(r"(?:https?://|www\.)\S+", text, re.I):
         return "credit"
+    # the group's ad card, its address drawn on the picture ("Visit Us At" / "Or At", SGKK Bleach 274-290)
+    if re.fullmatch(r"(?:visit|join|find)\s+us\s+(?:at|on)\b.{0,40}|or\s+at", text, re.I):
+        return "credit"
     letters = re.findall(r"[^\W\d_]", text)
     if len(letters) >= 6 and len(_MOJIBAKE.findall(text)) >= 0.4 * len(letters):
         return "credit"
@@ -348,10 +351,18 @@ def _repair_sound_tags(src: Path, work_dir: Path, log: Log) -> Path:
     after_credit = 0
     # תוויות דובר באותיות רגילות ("Jackson: There he is." / "Lopez: 7-Adam-07"): רק שמות שחוזרים
     # 3 פעמים לפחות בתחילת שורה, ורק כשיש לפחות שני שמות כאלה בקובץ (Rookie, Hobbit)
-    _lab = re.compile(r"(?m)^(\s*-?\s*(?:<i>)?)([A-Z][a-z]+(?: [A-Z][a-z]+)?):\s+(?=\S)")
+    # ... or 5+ labels of 3+ different names (Good Doctor S01: "Lea:", "Glenda:", "Ko:", once or twice
+    # each), never common words that open a line with a colon ("Note:", "Rule:"); a label can also
+    # end its line ("When will they wake up?" / "Glenda:")
+    _lab = re.compile(r"(?m)^(\s*-?\s*(?:<i>)?)([A-Z][a-z]+(?: [A-Z][a-z]+)?):(?:\s+(?=\S)|[ \t]*$)")
     from collections import Counter as _C
     _cnt = _C(m.group(2) for m in _lab.finditer("\n\n".join(blocks)))
-    title_labels = {k for k, v in _cnt.items() if v >= 3} if sum(1 for v in _cnt.values() if v >= 3) >= 2 else set()
+    _NOT_LAB = {"Note", "Warning", "Rule", "Step", "Question", "Answer", "Dear", "Subject", "Exhibit", "Item",
+                "Chapter", "Part", "Lesson", "Tip", "Hint", "Example", "Translation", "Caution", "Attention", "Okay",
+                "Well", "Yes", "No", "So", "And", "But", "Now", "Then", "Look", "Listen", "Remember", "Wait"}
+    _cnt = _C({k: v for k, v in _cnt.items() if k.split()[0] not in _NOT_LAB})
+    title_labels = ({k for k, v in _cnt.items() if v >= 3} if sum(1 for v in _cnt.values() if v >= 3) >= 2 else set()) \
+        or (set(_cnt) if sum(_cnt.values()) >= 5 and len(_cnt) >= 3 else set())
     for i, b in enumerate(blocks):
         lines = b.split("\n")
         if len(lines) < 3 or "-->" not in lines[1]:
@@ -367,7 +378,9 @@ def _repair_sound_tags(src: Path, work_dir: Path, log: Log) -> Path:
         after_credit = 0
         # closed-caption speaker labels ("JIM: I'm having fun!", "ALL:") are not dialogue;
         # also "[Zi] Ah, a mother's set." / "-[Pavi] What is this place?" (Avatar FENiX SDH)
-        new = [re.sub(r"^(\s*-?\s*(?:<i>)?)[A-Z][A-Z .'&-]{1,24}:\s*", r"\1", l) for l in lines[2:]]
+        # (also "McGEE:" / "MacLEAN:", NCIS S12: 33 cues; and a manner note "(quietly): You said...")
+        new = [re.sub(r"^(\s*-?\s*(?:<i>)?)(?:Mc|Mac)?[A-Z][A-Z .'&-]{1,24}:\s*", r"\1", l) for l in lines[2:]]
+        new = [re.sub(r"^(\s*-?\s*(?:<i>)?)\([a-z][^)\n]{0,30}\)[ \t]*:[ \t]*", r"\1", l) for l in new]
         if title_labels:
             new = [_lab.sub(lambda m: m.group(1) if m.group(2) in title_labels else m.group(0), l) for l in new]
         new = [re.sub(r"^(\s*-?\s*)\[(?:[A-Z][\w'.-]*)(?: [A-Z][\w'.-]*){0,2}\]\s*(?=\S)", r"\1", l) for l in new]

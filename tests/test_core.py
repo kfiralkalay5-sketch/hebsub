@@ -182,6 +182,23 @@ def test_sdh_tags_in_source(tmp_path):
                   encoding="utf-8")
     assert P._drop_untranslated(he) == 1 and "עממית" in he.read_text(encoding="utf-8")
 
+def test_speaker_labels_and_fansub_ads(tmp_path):
+    """SDH labels the old cleanup missed (NCIS "McGEE:", a label ending its line, a few names once or
+    twice each, "(quietly):") and a fansub group's ad card ("Visit Us At")."""
+    from hebsub import pipeline as P
+    cues = ["McGEE:\nDear Dad, Merry Christmas Eve.", "Lea: You need to take a break.", "When will they wake up?\nGlenda:",
+            "Ko: On my count.", "Melendez: You're gonna see.", "Lea: Okay.", "(quietly): I'm sleeping on the couch.",
+            "Step one: we wait.", "<i>Visit Us At</i>"]
+    src = tmp_path / "x.en.srt"
+    src.write_text("\n\n".join(f"{i}\n00:00:0{i},000 --> 00:00:0{i},900\n{t}" for i, t in enumerate(cues, 1)) + "\n",
+                   encoding="utf-8")
+    out = P._repair_sound_tags(src, tmp_path, lambda m: None).read_text(encoding="utf-8")
+    for gone in ("McGEE:", "Lea:", "Glenda:", "Ko:", "Melendez:", "(quietly)", "Visit Us At"):
+        assert gone not in out, gone
+    for kept in ("Dear Dad, Merry Christmas Eve.", "When will they wake up?", "I'm sleeping on the couch.", "Step one: we wait."):
+        assert kept in out, kept
+
+
 def test_interjection_screams():
     from hebsub import pipeline as P
     for t in ("Hmm.", "Aaaah!", "Ugh!", "Hyah!", "Hahaha!", "Tsk, tsk."):

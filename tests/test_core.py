@@ -416,3 +416,20 @@ def test_idiom_terms():
     assert any("לבריאות" in t for t in terms_for("Bless you. Here's a tissue."))
     assert not terms_for("God bless you, Dr. Murphy, for your help")
     assert any("גן" in t for t in terms_for("She starts preschool on Monday."))
+
+
+def test_police_radio_terms():
+    """Police / legal / radio jargon gets its Israeli-subtitle Hebrew; names and everyday words do not."""
+    from hebsub.glossary import terms_for
+    assert any("מח״ש" in t for t in terms_for("IA wants to talk to you."))
+    assert any("ימ״מ" in t for t in terms_for("Requesting SWAT."))
+    assert any("אמבולנס" in t for t in terms_for("I need an RA for a GSW."))
+    assert any("קיבלתי" in t for t in terms_for("Copy that."))
+    assert any("עבור" in t for t in terms_for("Go for Nolan."))
+    assert not terms_for("Ada Wong is here.")
+    assert not terms_for("I made a copy.")
+    assert not terms_for("Just go for it.")
+    assert not terms_for("Ouch, a bee sting.")
+    # Rando is a character's nickname in NCIS: Origins; only "some rando" is the common noun
+    assert not any("סתם מישהו" in t for t in terms_for("Rando, get over here."))
+    assert any("סתם מישהו" in t for t in terms_for("Some rando called."))

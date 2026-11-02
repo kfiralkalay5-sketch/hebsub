@@ -433,3 +433,18 @@ def test_police_radio_terms():
     # Rando is a character's nickname in NCIS: Origins; only "some rando" is the common noun
     assert not any("סתם מישהו" in t for t in terms_for("Rando, get over here."))
     assert any("סתם מישהו" in t for t in terms_for("Some rando called."))
+
+
+def test_hebrew_audio_only(monkeypatch, tmp_path):
+    """A show whose every audio track is Hebrew needs no translation; a mixed or untagged one does."""
+    import subprocess
+    from hebsub import subsource
+    from hebsub.config import Config
+
+    class R:
+        def __init__(self, out):
+            self.stdout = out
+    cfg = Config({})
+    for out, want in (("heb\n", True), ("heb\nheb\n", True), ("eng\nheb\n", False), ("", False), ("und\n", False)):
+        monkeypatch.setattr(subprocess, "run", lambda *a, **k: R(out))
+        assert subsource.hebrew_audio_only(tmp_path / "x.mkv", cfg) is want

@@ -84,7 +84,7 @@ def library_roots(cfg: Config, extra: list[str]) -> list[Path]:
 
 
 def backlog(cfg: Config, roots: list[Path], st: dict, limit: int = 200) -> list[str]:
-    from .subsource import find_hebrew
+    from .subsource import find_hebrew, hebrew_audio_only
     skip = set(st["done"]) | {p for p, n in st["failed"].items() if n >= 2}
     out = []
     for root in roots:
@@ -92,7 +92,7 @@ def backlog(cfg: Config, roots: list[Path], st: dict, limit: int = 200) -> list[
             continue
         for p in sorted(root.rglob("*")):
             if p.suffix.lower() in VIDEO_EXT and p.is_file() and "@" not in str(p) and str(p) not in skip:
-                if not find_hebrew(p, cfg):
+                if not find_hebrew(p, cfg) and not hebrew_audio_only(p, cfg):
                     out.append(str(p))
                     if len(out) >= limit:
                         return out

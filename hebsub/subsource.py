@@ -226,6 +226,20 @@ def wait_for_english(video: Path, cfg, log) -> Path | None:
     return None
 
 
+def hebrew_audio_only(video: Path, cfg) -> bool:
+    """Every audio track is tagged Hebrew: an Israeli show, or a Hebrew dub without the original
+    track. Nothing to translate, so the watcher skips it instead of waiting a week for English."""
+    ffprobe = cfg.get("ffmpeg.probe_binary", "ffprobe")
+    try:
+        out = subprocess.run([ffprobe, "-v", "error", "-select_streams", "a", "-show_entries",
+                              "stream_tags=language", "-of", "csv=p=0", str(video)],
+                             capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120).stdout
+    except Exception:  # noqa: BLE001 - no ffprobe / unreadable file: let the pipeline decide
+        return False
+    tags = out.split()
+    return bool(tags) and all(t.strip().lower() in ("heb", "he", "iw") for t in tags)
+
+
 # ---------------------------------------------------------------------------
 # ffmpeg embedded track
 # ---------------------------------------------------------------------------

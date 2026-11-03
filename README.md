@@ -117,6 +117,62 @@ hebsub setup
 
 כל חיבור נבדק מיד. המפתחות נשמרים בקובץ `secrets.json` בתיקיית הנתונים, ולא בקובץ ההגדרות.
 
+## חיבור לשירותים: Sonarr, Radarr, Bazarr (גם ב-Docker) ו-TMDB
+כל החיבורים אופציונליים. בלי אף אחד מהם, hebsub מתרגם כל קובץ או תיקייה שנותנים לו.
+
+### מה כל שירות נותן
+| שירות | פורט רגיל | מה hebsub עושה איתו |
+|---|---|---|
+| **Sonarr** (סדרות) | 8989 | מזהה הורדות חדשות לפי היסטוריית הייבוא ומתרגם אותן קודם, מוצא את תיקיות הספרייה, לוקח את מספר הסדרה ב-TMDB, ואחרי התרגום מבקש סריקה מחדש כדי שהכתובית תופיע |
+| **Radarr** (סרטים) | 7878 | אותו דבר לסרטים |
+| **Bazarr** | 6767 | מבקש כתוביות באנגלית לסרטון שאין לו |
+| **TMDB** | (אינטרנט) | מזהה את הדמויות בכל פרק ואם השחקן גבר או אישה, כדי שהעברית תפנה לכל דמות במין הנכון |
+| **Plex, Jellyfin, Emby** | – | לא צריך חיבור: הם מוצאים לבד את קובץ ה-`.he.srt` שנכתב ליד הסרטון |
+
+hebsub רק קורא מהשירותים, מבקש מ-Bazarr כתוביות באנגלית ומבקש סריקה מחדש. הוא לא משנה שום הגדרה בהם.
+
+### איפה מוצאים את מפתחות ה-API
+- **Sonarr, Radarr:** ‏Settings ← General ← Security ← **API Key**.
+- **Bazarr:** ‏Settings ← General ← Security ← **API Key**. כדי ש-Bazarr יוריד אנגלית, האנגלית צריכה להיות בפרופיל השפות שלו (Settings ← Languages).
+- **TMDB (חינם):**
+  1. נרשמים ב-[themoviedb.org](https://www.themoviedb.org/signup).
+  2. נכנסים ל-Settings ← **API** ← Create ← Developer וממלאים את הטופס. שימוש אישי מספיק.
+  3. מעתיקים את **API Read Access Token** (מחרוזת ארוכה שמתחילה ב-`eyJ`) או את **API Key**. שניהם עובדים.
+
+  ל-TMDB נשלחים רק שם הסדרה או הסרט ומספרי העונה והפרק, לא הכתוביות. התוצאות נשמרות בתיקייה `cast_cache` שבתיקיית הנתונים, כך שכל פרק נבדק פעם אחת.
+
+### כשהשירותים רצים ב-Docker
+hebsub עצמו רץ מחוץ ל-Docker, על המחשב עם כרטיס המסך, ומדבר עם הקונטיינרים דרך הפורטים שלהם:
+- **הכתובת:**
+  - Docker על אותו מחשב: `http://localhost:8989`, כלומר הפורט שמוגדר ב-`ports:` של docker-compose.
+  - Docker על NAS או על מחשב אחר: `http://<כתובת ה-IP של ה-NAS>:8989`, למשל `http://192.168.1.50:8989`.
+  - מאחורי reverse proxy עם URL Base: כוללים אותו, למשל `http://nas:8989/sonarr`.
+  - **לא** משתמשים בשם הקונטיינר (`http://sonarr:8989`). השם הזה מוכר רק בתוך רשת ה-Docker.
+- **התיקיות:** Sonarr ו-Radarr רואים את הקבצים בנתיבים של הקונטיינר, למשל `/tv`, ו-hebsub צריך לדעת איפה אותה תיקייה נמצאת אצלו. ב-docker-compose זה מופיע כך:
+  ```yaml
+  volumes:
+    - /volume1/media/tv:/tv        # בצד שמאל: ב-NAS. בצד ימין: בתוך הקונטיינר
+  ```
+  ואצל hebsub אותה תיקייה היא תיקיית הרשת המשותפת של ה-NAS:
+  - Windows: `\\NAS\media\tv`
+  - macOS: `/Volumes/media/tv` (אחרי חיבור ב-Finder: Go ← Connect to Server ← `smb://NAS`)
+  - Linux: `/mnt/media/tv` (חיבור SMB או NFS)
+
+  `hebsub setup` קורא מ-Sonarr ומ-Radarr את רשימת התיקיות ושואל על כל אחת איפה היא אצלכם.
+- **הרשאת כתיבה:** hebsub כותב את קובץ ה-`.he.srt` ליד הסרטון, אז החיבור לתיקייה המשותפת צריך הרשאת כתיבה.
+
+### הגדרה ידנית, בלי האשף
+ב-`config.json`:
+```json
+{
+  "sonarr": {"url": "http://192.168.1.50:8989", "api_key_env": "SONARR_API_KEY", "rescan_after": true},
+  "radarr": {"url": "http://192.168.1.50:7878", "api_key_env": "RADARR_API_KEY", "rescan_after": true},
+  "bazarr": {"enabled": true, "url": "http://192.168.1.50:6767", "api_key_env": "BAZARR_API_KEY"},
+  "path_map": [["/tv", "/Volumes/media/tv"], ["/movies", "/Volumes/media/movies"]]
+}
+```
+את המפתחות עצמם שמים במשתני סביבה בשמות `SONARR_API_KEY`, `RADARR_API_KEY`, `BAZARR_API_KEY` ו-`TMDB_API_KEY`. ב-Windows משתמשים ב-`setx SONARR_API_KEY "..."`, ובמק ובלינוקס ב-`export SONARR_API_KEY=...` בתוך `~/.zshrc` או `~/.bashrc`. אפשר גם להריץ את `hebsub setup`, שבודק כל חיבור ושומר את המפתחות ב-`secrets.json` בתיקיית הנתונים.
+
 ## תרגום אוטומטי ברקע: `hebsub watch`
 ```bash
 hebsub watch                      # עם התיקיות של Sonarr/Radarr
@@ -188,5 +244,6 @@ hebsub learn "D:\TV"          # או תיקיות מסוימות
   - **ההחלטה:** הוא לא נכלל, כי הוא דורש שעות של אימון וזיכרון רב.
 
 ## רישיונות
+- **hebsub:** רישיון MIT (הקובץ `LICENSE`). מותר להשתמש, לשנות ולהפיץ, בתנאי שהודעת זכויות היוצרים נשארת.
 - **CueIvrit:** הכלים בתיקייה `hebsub/vendor/cueivrit` (הכנה, בנייה ובדיקה של קבצי SRT) הם CueIvrit מאת Guy Tsarfati, ברישיון MIT. הרישיון המלא נמצא בתיקייה.
 - **המודלים:** יש להם רישיונות משלהם. Gemma מופץ בתנאי השימוש של Google.

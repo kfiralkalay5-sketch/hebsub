@@ -8,6 +8,7 @@ version = "0.3.0"
 description = "Local English-to-Hebrew subtitle translation for video libraries (Ollama), with gender-aware Hebrew"
 readme = "README.md"
 requires-python = ">=3.10"
+license = { text = "MIT" }
 dependencies = []  # the core uses only the Python standard library
 
 [project.optional-dependencies]

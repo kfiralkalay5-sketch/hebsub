@@ -448,3 +448,47 @@ def test_hebrew_audio_only(monkeypatch, tmp_path):
     for out, want in (("heb\n", True), ("heb\nheb\n", True), ("eng\nheb\n", False), ("", False), ("und\n", False)):
         monkeypatch.setattr(subprocess, "run", lambda *a, **k: R(out))
         assert subsource.hebrew_audio_only(tmp_path / "x.mkv", cfg) is want
+
+
+def test_media_server_paths():
+    """A local folder is found under the app's own library roots (Docker /data, Windows D:\\)."""
+    from hebsub.mediaservers import server_path
+    local = "/Volumes/Plex2/TV Shows/NCIS/Season 24"
+    assert server_path(local, ["/data/Movies", "/data/TV Shows"]) == "/data/TV Shows/NCIS/Season 24"
+    assert server_path(local, ["D:\\Media\\TV Shows"]) == "D:\\Media\\TV Shows\\NCIS\\Season 24"
+    assert server_path(local, ["/data/Movies"]) is None
+    assert server_path(local, [], [["/tv", "/Volumes/Plex2/TV Shows"]]) == "/tv/NCIS/Season 24"
+    assert server_path("D:\\TV\\Show\\Season 1", [], [["/tv", "D:\\TV"]]) == "/tv/Show/Season 1"
+
+
+def test_after_write_requests(monkeypatch, tmp_path):
+    """After a write: Sonarr rescans the matching series, Plex scans the folder, Jellyfin gets the
+    folder; a failing app is logged, never raised."""
+    import io, json, urllib.request
+    from hebsub import mediaservers
+    from hebsub.config import Config
+    calls = []
+
+    def fake(req, timeout=0):
+        url, body = req.full_url, json.loads(req.data) if req.data else None
+        calls.append((req.get_method(), url, body))
+        if url.endswith("/api/v3/series"):
+            out = [{"id": 7, "title": "NCIS", "path": "/tv/NCIS"}]
+        elif url.endswith("/library/sections"):
+            out = {"MediaContainer": {"Directory": [{"key": "2", "type": "show", "Location": [{"path": "/data/TV Shows"}]}]}}
+        elif url.endswith("/Library/VirtualFolders"):
+            raise OSError("jellyfin down")
+        else:
+            out = {}
+        return io.BytesIO(json.dumps(out).encode())
+    monkeypatch.setattr(urllib.request, "urlopen", fake)
+    monkeypatch.setenv("SONARR_API_KEY", "k"); monkeypatch.setenv("PLEX_TOKEN", "t"); monkeypatch.setenv("JELLYFIN_API_KEY", "j")
+    cfg = Config({"sonarr": {"url": "http://nas:8989", "api_key_env": "SONARR_API_KEY"},
+                  "plex": {"url": "http://nas:32400", "token_env": "PLEX_TOKEN"},
+                  "jellyfin": {"url": "http://nas:8096", "api_key_env": "JELLYFIN_API_KEY"}})
+    logs = []
+    mediaservers.after_write(cfg, Path("/Volumes/Plex2/TV Shows/NCIS/Season 24/NCIS.S24E05.mkv"), logs.append)
+    assert ("POST", "http://nas:8989/api/v3/command", {"name": "RescanSeries", "seriesId": 7}) in calls
+    assert any(u.startswith("http://nas:32400/library/sections/2/refresh?path=%2Fdata%2FTV+Shows%2FNCIS%2FSeason+24")
+               for _, u, _ in calls)
+    assert any("jellyfin: refresh failed" in m for m in logs)

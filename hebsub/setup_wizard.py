@@ -1,7 +1,8 @@
 """`hebsub setup`: interactive configuration for any OS (terminal or PowerShell).
 
 Checks Ollama and the model, finds ffmpeg, and optionally connects TMDB (character
-genders), Sonarr / Radarr (new downloads, library paths) and Bazarr (English subtitles).
+genders), Sonarr / Radarr (new downloads, library paths), Bazarr (English subtitles) and
+Plex / Jellyfin / Emby (scan the folder once a subtitle is written).
 Every connection is tested on the spot. API keys go to secrets.json in the data folder,
 never into config.json. Prompts are in English because many terminals cannot show
 Hebrew right-to-left.
@@ -67,6 +68,24 @@ def test_tmdb(key: str) -> tuple[bool, str]:
         else:
             http_json("https://api.themoviedb.org/3/configuration?" + urllib.parse.urlencode({"api_key": key}))
         return True, "TMDB OK"
+    except Exception as exc:  # noqa: BLE001
+        return False, str(exc)[:120]
+
+
+def test_plex(url: str, token: str) -> tuple[bool, str]:
+    try:
+        d = http_json(url.rstrip("/") + "/library/sections", {"X-Plex-Token": token, "Accept": "application/json"})
+        n = len(((d or {}).get("MediaContainer") or {}).get("Directory") or [])
+        return True, f"Plex OK, {n} libraries"
+    except Exception as exc:  # noqa: BLE001
+        return False, str(exc)[:120]
+
+
+def test_jellyfin(url: str, key: str) -> tuple[bool, str]:
+    """Jellyfin and Emby answer the same call."""
+    try:
+        st = http_json(url.rstrip("/") + "/System/Info", {"X-Emby-Token": key, "Authorization": f'MediaBrowser Token="{key}"'})
+        return True, f"{st.get('ProductName', 'Jellyfin/Emby')} {st.get('Version', '')}".strip()
     except Exception as exc:  # noqa: BLE001
         return False, str(exc)[:120]
 
@@ -162,6 +181,31 @@ def setup_tmdb() -> None:
         save_secret("TMDB_API_KEY", key)
 
 
+def setup_plex(data: dict) -> None:
+    if not yes("Connect Plex (scan the folder as soon as a subtitle is written)?", default=bool(data["plex"].get("url"))):
+        return
+    url = ask("  Plex URL", data["plex"].get("url") or "http://localhost:32400")
+    print("  Token: in Plex Web open any movie > ... > Get Info > View XML; the address ends with X-Plex-Token=...")
+    token = ask("  Plex token", secret("PLEX_TOKEN") or "")
+    ok, msg = test_plex(url, token)
+    print(("  OK: " if ok else "  ! Failed: ") + msg)
+    if ok or yes("  Save anyway?", default=False):
+        data["plex"].update({"url": url, "token_env": "PLEX_TOKEN"})
+        save_secret("PLEX_TOKEN", token)
+
+
+def setup_jellyfin(data: dict) -> None:
+    if not yes("Connect Jellyfin or Emby?", default=bool(data["jellyfin"].get("url"))):
+        return
+    url = ask("  Jellyfin / Emby URL", data["jellyfin"].get("url") or "http://localhost:8096")
+    key = ask("  API key (Dashboard > API Keys > +)", secret("JELLYFIN_API_KEY") or "")
+    ok, msg = test_jellyfin(url, key)
+    print(("  OK: " if ok else "  ! Failed: ") + msg)
+    if ok or yes("  Save anyway?", default=False):
+        data["jellyfin"].update({"url": url, "api_key_env": "JELLYFIN_API_KEY"})
+        save_secret("JELLYFIN_API_KEY", key)
+
+
 def setup_voice(data: dict) -> None:
     """Optional voice features: speaker gender from the audio and the addressee classifier."""
     from . import voicekit
@@ -196,7 +240,7 @@ def run(config_path: str | None = None) -> int:
     target = Path(config_path) if config_path else HOME / "config.json"
     base = target if target.is_file() else Path(__file__).resolve().parent / "default_config.json"
     data = json.loads(base.read_text(encoding="utf-8"))
-    for k in ("ollama", "ffmpeg", "bazarr", "sonarr", "radarr"):
+    for k in ("ollama", "ffmpeg", "bazarr", "sonarr", "radarr", "plex", "jellyfin"):
         data.setdefault(k, {})
     print(f"hebsub setup. Settings: {target}\n")
     print("1) Translation model (Ollama)")
@@ -210,7 +254,10 @@ def run(config_path: str | None = None) -> int:
     setup_arr(data, "radarr", "RADARR_API_KEY")
     print("\n5) Bazarr (optional)")
     setup_bazarr(data)
-    print("\n6) Voice features (optional: better he/she in Hebrew)")
+    print("\n6) Plex / Jellyfin / Emby (optional: the new subtitle shows up at once)")
+    setup_plex(data)
+    setup_jellyfin(data)
+    print("\n7) Voice features (optional: better he/she in Hebrew)")
     setup_voice(data)
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")

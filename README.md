@@ -117,7 +117,7 @@ hebsub setup
 
 כל חיבור נבדק מיד. המפתחות נשמרים בקובץ `secrets.json` בתיקיית הנתונים, ולא בקובץ ההגדרות.
 
-## חיבור לשירותים: Sonarr, Radarr, Bazarr (גם ב-Docker) ו-TMDB
+## חיבור לשירותים: Sonarr, Radarr, Bazarr, Plex, Jellyfin (גם ב-Docker) ו-TMDB
 כל החיבורים אופציונליים. בלי אף אחד מהם, hebsub מתרגם כל קובץ או תיקייה שנותנים לו.
 
 ### מה כל שירות נותן
@@ -127,13 +127,16 @@ hebsub setup
 | **Radarr** (סרטים) | 7878 | אותו דבר לסרטים |
 | **Bazarr** | 6767 | מבקש כתוביות באנגלית לסרטון שאין לו |
 | **TMDB** | (אינטרנט) | מזהה את הדמויות בכל פרק ואם השחקן גבר או אישה, כדי שהעברית תפנה לכל דמות במין הנכון |
-| **Plex, Jellyfin, Emby** | – | לא צריך חיבור: הם מוצאים לבד את קובץ ה-`.he.srt` שנכתב ליד הסרטון |
+| **Plex** | 32400 | אופציונלי: סורק את תיקיית הסרטון מיד אחרי שהכתובית נכתבה (בלי חיבור, Plex ימצא אותה בסריקה הבאה שלו) |
+| **Jellyfin, Emby** | 8096 | אותו דבר: מודיע להם שהתיקייה השתנתה |
 
-hebsub רק קורא מהשירותים, מבקש מ-Bazarr כתוביות באנגלית ומבקש סריקה מחדש. הוא לא משנה שום הגדרה בהם.
+hebsub רק קורא מהשירותים, מבקש מ-Bazarr כתוביות באנגלית, ואחרי כל תרגום מבקש מ-Sonarr או Radarr ומ-Plex או Jellyfin לסרוק מחדש את הסדרה או הסרט. הוא לא משנה שום הגדרה בהם, וכשאחד מהם לא זמין הכתובית נשארת במקומה והתרגום ממשיך.
 
 ### איפה מוצאים את מפתחות ה-API
 - **Sonarr, Radarr:** ‏Settings ← General ← Security ← **API Key**.
 - **Bazarr:** ‏Settings ← General ← Security ← **API Key**. כדי ש-Bazarr יוריד אנגלית, האנגלית צריכה להיות בפרופיל השפות שלו (Settings ← Languages).
+- **Plex:** פותחים ב-Plex Web סרט כלשהו ← ⋯ ← Get Info ← **View XML**. בכתובת שנפתחת, הקוד שאחרי `X-Plex-Token=` הוא הטוקן.
+- **Jellyfin, Emby:** ‏Dashboard ← **API Keys** ← +.
 - **TMDB (חינם):**
   1. נרשמים ב-[themoviedb.org](https://www.themoviedb.org/signup).
   2. נכנסים ל-Settings ← **API** ← Create ← Developer וממלאים את הטופס. שימוש אישי מספיק.
@@ -168,10 +171,13 @@ hebsub עצמו רץ מחוץ ל-Docker, על המחשב עם כרטיס המס�
   "sonarr": {"url": "http://192.168.1.50:8989", "api_key_env": "SONARR_API_KEY", "rescan_after": true},
   "radarr": {"url": "http://192.168.1.50:7878", "api_key_env": "RADARR_API_KEY", "rescan_after": true},
   "bazarr": {"enabled": true, "url": "http://192.168.1.50:6767", "api_key_env": "BAZARR_API_KEY"},
+  "plex": {"url": "http://192.168.1.50:32400", "token_env": "PLEX_TOKEN"},
+  "jellyfin": {"url": "", "api_key_env": "JELLYFIN_API_KEY"},
   "path_map": [["/tv", "/Volumes/media/tv"], ["/movies", "/Volumes/media/movies"]]
 }
 ```
-את המפתחות עצמם שמים במשתני סביבה בשמות `SONARR_API_KEY`, `RADARR_API_KEY`, `BAZARR_API_KEY` ו-`TMDB_API_KEY`. ב-Windows משתמשים ב-`setx SONARR_API_KEY "..."`, ובמק ובלינוקס ב-`export SONARR_API_KEY=...` בתוך `~/.zshrc` או `~/.bashrc`. אפשר גם להריץ את `hebsub setup`, שבודק כל חיבור ושומר את המפתחות ב-`secrets.json` בתיקיית הנתונים.
+Plex ו-Jellyfin מזהים לבד איפה התיקייה נמצאת אצלם, לפי שמות ספריות התוכן שלהם (`/data/TV Shows` מול `/Volumes/media/TV Shows`). אם השמות שונים, מוסיפים להם `path_map` משלהם באותה צורה. אם הם לא מצליחים לזהות, נסרקת כל הספרייה.
+את המפתחות עצמם שמים במשתני סביבה בשמות `SONARR_API_KEY`, `RADARR_API_KEY`, `BAZARR_API_KEY`, `PLEX_TOKEN`, `JELLYFIN_API_KEY` ו-`TMDB_API_KEY`. ב-Windows משתמשים ב-`setx SONARR_API_KEY "..."`, ובמק ובלינוקס ב-`export SONARR_API_KEY=...` בתוך `~/.zshrc` או `~/.bashrc`. אפשר גם להריץ את `hebsub setup`, שבודק כל חיבור ושומר את המפתחות ב-`secrets.json` בתיקיית הנתונים.
 
 ## תרגום אוטומטי ברקע: `hebsub watch`
 ```bash

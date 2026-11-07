@@ -65,6 +65,16 @@
     "api_key_env": "RADARR_API_KEY",
     "rescan_after": false
   },
+  "plex": {
+    "url": "",
+    "token_env": "PLEX_TOKEN",
+    "path_map": []
+  },
+  "jellyfin": {
+    "url": "",
+    "api_key_env": "JELLYFIN_API_KEY",
+    "path_map": []
+  },
   "path_map": [],
   "limits": {
     "max_cues": 3000,

@@ -1460,8 +1460,12 @@ def translate_video(video: Path, cfg, engine: Engine, log: Log, *,
                 eta = (time.time() - t0) / k * (len(todo) - k) / 60
                 log(f"translate: batch {i}/{len(batch_files)} in {took:.0f}s (eta {eta:.0f} min)")
 
-        return finish_translation(cfg, engine, video, english, work_dir, bible, bible_path, voices,
-                                  sdh_mode, decisions, log, output_dir, transcript=transcript)
+        out = finish_translation(cfg, engine, video, english, work_dir, bible, bible_path, voices,
+                                 sdh_mode, decisions, log, output_dir, transcript=transcript)
+        if output_dir is None:  # written next to the video: Sonarr/Radarr, Plex, Jellyfin pick it up now
+            from .mediaservers import after_write
+            after_write(cfg, video, log)
+        return out
     finally:
         if claimed:
             TRANSLATING_LOCK.unlink(missing_ok=True)  # training resumes on its own
